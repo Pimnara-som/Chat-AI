@@ -91,13 +91,14 @@ function parseContent(raw) {
   }
 
   // 2. <|channel|>thought ... (model internal channel format)
-  const channelThoughtMatch = display.match(/<\|channel\|>thought\s*([\s\S]*?)(?:<\|channel\|>|$)/);
+  // More robust regex: allow optional space after <|channel|> and handle multiple thought patterns
+  const channelThoughtMatch = display.match(/<\|channel\|>\s*thought\s*([\s\S]*?)(?:<\|channel\|>|$)/i);
   if (channelThoughtMatch) {
     thought = channelThoughtMatch[1].trim();
-    // Remove everything up to the closing channel tag
-    display = display.replace(/<\|channel\|>thought[\s\S]*?(?:<\|channel\|>|$)/, '').trim();
-    // Also strip any remaining <|channel|> tags
-    display = display.replace(/<\|channel\|>[^<]*/g, '').trim();
+    // Remove the thought block from display
+    display = display.replace(/<\|channel\|>\s*thought[\s\S]*?(?:<\|channel\|>|$)/i, '').trim();
+    // Also strip any remaining <|channel|> tags or <|turn|> tags
+    display = display.replace(/<\|channel\|>[^<]*/g, '').replace(/<\|turn\|>/g, '').trim();
     return { display, thought };
   }
 
@@ -165,6 +166,8 @@ export default function MessageBubble({ message, isStreaming }) {
       }
       return match;
     });
+    // Final cleanup of any lingering model tags
+    processedDisplay = processedDisplay.replace(/<\|channel\|>/g, '').replace(/<\|turn\|>/g, '').trim();
   }
 
   // isStreaming prop is passed from ChatWindow for the live streaming bubble
@@ -200,7 +203,18 @@ export default function MessageBubble({ message, isStreaming }) {
           ) : null}
         </div>
         {message.timestamp && (
-          <div className="msg-time">{formatTime(message.timestamp)}</div>
+          <div className="msg-footer">
+            <div className="msg-time">{formatTime(message.timestamp)}</div>
+            {!isUser && displayContent && (
+              <button 
+                className="msg-action-btn" 
+                onClick={() => navigator.clipboard.writeText(displayContent)}
+                title="Copy response"
+              >
+                <Copy size={12} />
+              </button>
+            )}
+          </div>
         )}
       </div>
     </div>

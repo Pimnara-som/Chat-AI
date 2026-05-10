@@ -393,9 +393,30 @@ body {
 .msg-time {
   font-size: 11px;
   color: var(--text-muted);
-  padding: 0 4px;
 }
-.msg-row.user .msg-time { text-align: right; }
+.msg-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 2px 4px;
+}
+.msg-row.ai .msg-footer { justify-content: flex-start; flex-direction: row-reverse; }
+
+.msg-action-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  padding: 4px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  transition: var(--trans);
+  opacity: 0;
+}
+.msg-row:hover .msg-action-btn { opacity: 1; }
+.msg-action-btn:hover { color: var(--accent); background: var(--bg-hover); }
 
 /* ─── Markdown inside AI bubbles ──────────────────────────────── */
 .msg-bubble p { margin: 0 0 10px; }
