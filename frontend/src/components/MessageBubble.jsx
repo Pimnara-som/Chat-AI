@@ -116,21 +116,42 @@ function parseContent(raw) {
   }
 
   // 2. <|channel|>thought ... (PARL model format)
-  const channelThoughtMatch = display.match(/<\|channel\|>\s*thought\s*([\s\S]*?)(?:<\|channel\|>|$)/i);
-  if (channelThoughtMatch) {
-    thought = channelThoughtMatch[1].trim();
-    display = display.replace(/<\|channel\|>\s*thought[\s\S]*?(?:<\|channel\|>|$)/i, '').trim();
-    display = display.replace(/<\|channel\|>[^<]*/g, '').replace(/<\|turn\|>/g, '').trim();
+  // Use indexOf instead of lazy regex to correctly grab all thought content during streaming
+  const CHANNEL_TAG = '<|channel|>';
+  const lowerDisplay = display.toLowerCase();
+  const thoughtTagIdx = lowerDisplay.indexOf('<|channel|>thought');
+  if (thoughtTagIdx !== -1) {
+    // Find end of the opening tag (everything after "<|channel|>thought")
+    const afterTagStart = thoughtTagIdx + '<|channel|>thought'.length;
+    // Remove optional leading whitespace after "thought"
+    let contentStart = afterTagStart;
+    while (contentStart < display.length && display[contentStart] === ' ') contentStart++;
+
+    const rest = display.slice(contentStart);
+    // Check if there's a closing <|channel|> tag for a non-thought channel
+    const closingIdx = rest.toLowerCase().indexOf('<|channel|>');
+    if (closingIdx !== -1) {
+      // Thought ends at next channel tag; display comes after
+      thought = rest.slice(0, closingIdx).trim();
+      const afterThought = rest.slice(closingIdx);
+      // Remove all remaining channel tags from display
+      display = afterThought.replace(/<\|channel\|>[^<]*/gi, '').replace(/<\|turn\|>/gi, '').trim();
+    } else {
+      // Streaming: all remaining text is the thought, display is empty
+      thought = rest.trim();
+      display = '';
+    }
+    // Also remove everything before the thought tag in display
     return { display, thought };
   }
 
-  // 3. Strip leftover channel tags
+  // 3. Strip leftover channel tags (non-thought channels)
   if (display.includes('<|channel|>')) {
-    const lastChannelMatch = display.match(/<\|channel\|>(\w+)\s*([\s\S]*)/);
+    const lastChannelMatch = display.match(/<\|channel\|>(\w+)\s*([\s\S]*)/i);
     if (lastChannelMatch) {
       thought = `[${lastChannelMatch[1]}] ${lastChannelMatch[2].trim()}`;
     }
-    display = display.replace(/<\|channel\|>[\s\S]*/g, '').trim();
+    display = display.replace(/<\|channel\|>[\s\S]*/gi, '').trim();
     return { display, thought };
   }
 
