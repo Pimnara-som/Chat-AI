@@ -105,16 +105,13 @@ function formatTime(iso) {
 function cleanDisplay(text) {
   if (!text) return '';
   return text
-    // Strip tool/action/warn blockquotes streamed from backend
-    .replace(/^>\s*🛠️.*$\n?/gm, '')
-    .replace(/^>\s*```.*$\n?/gm, '')
-    .replace(/^>\s*.*$\n?/gm, '')
+    // Only strip tool/agent blockquotes (contain 🛠️ or agent JSON fences)
+    .replace(/^> 🛠️.*$\n?/gm, '')
+    .replace(/^> ```[\s\S]*?^> ```\n?/gm, '')
     // Strip JSON action blocks (intermediate agent steps)
-    .replace(/```json[\s\S]*?```/g, '')
-    // Strip bare JSON objects that look like agent actions
-    .replace(/^\s*\{[\s\S]*?"action"\s*:[\s\S]*?\}\s*$/gm, '')
-    // Strip WARN lines
-    .replace(/^⚠️.*$\n?/gm, '')
+    .replace(/```json\n?\{[\s\S]*?"action"[\s\S]*?\}\n?```/g, '')
+    // Strip bare JSON objects that look like agent actions (only whole-line JSON)
+    .replace(/^\{[\s\S]*?"action"\s*:[\s\S]*?\}\s*$/gm, '')
     // Strip leftover channel/turn tags
     .replace(/<\|channel\|>/gi, '')
     .replace(/<\|turn\|>/gi, '')
@@ -226,7 +223,8 @@ export default function MessageBubble({ message, isStreaming }) {
     processedDisplay = processedDisplay.replace(/<\|channel\|>/g, '').replace(/<\|turn\|>/g, '').trim();
   }
 
-  const showThinkingSpinner = isStreaming && !thoughtContent && !displayContent;
+  // Show shimmer when: streaming AND no final answer yet (thought may or may not be present)
+  const showThinkingSpinner = isStreaming && !processedDisplay;
 
   return (
     <div className={`msg-row ${isUser ? 'user' : 'ai'}${isStreaming ? ' streaming' : ''}`}>
@@ -246,7 +244,7 @@ export default function MessageBubble({ message, isStreaming }) {
             <ThoughtBlock content={thoughtContent} isStreaming={isStreaming && !displayContent} />
           )}
 
-          {/* Main content */}
+          {/* Main content or shimmer */}
           {isUser ? (
             <span style={{ whiteSpace: 'pre-wrap' }}>{displayContent}</span>
           ) : processedDisplay ? (
