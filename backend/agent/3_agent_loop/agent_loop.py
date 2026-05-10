@@ -251,7 +251,7 @@ class AgentLoop:
 
     # ── main run method ────────────────────────────────────────────────────────
 
-    def run(self, user_query: str, chat_history: list = None) -> dict:
+    def run(self, user_query: str, chat_history: list = None, tool_overrides: dict = None) -> dict:
         """
         Execute multi-hop agent loop for a single user query.
 
@@ -326,7 +326,10 @@ class AgentLoop:
             # ── Execute tool ───────────────────────────────────────────────
             t0 = time.time()
             try:
-                result = execute_tool(tool_name, params)
+                if tool_overrides and tool_name in tool_overrides:
+                    result = tool_overrides[tool_name](params)
+                else:
+                    result = execute_tool(tool_name, params)
             except Exception as exc:
                 result = f"[Tool error] {exc}"
             elapsed = time.time() - t0
@@ -363,41 +366,38 @@ class PARLOrchestrator:
     """
 
     def __init__(self, main_model_fn, sub_model_fn,
-                 max_main_hops: int = 15, max_sub_hops: int = 100):
+                 max_main_hops: int = 15, max_sub_hops: int = 100,
+                 mode: str = "orchestrator", stream_callback=None, verbose: bool = False):
         self.main_loop = AgentLoop(
-            main_model_fn, mode="orchestrator",
-            max_hops=max_main_hops, verbose=True
+            main_model_fn, mode=mode,
+            max_hops=max_main_hops, verbose=verbose, stream_callback=stream_callback
         )
         self.sub_model_fn  = sub_model_fn
         self.max_sub_hops  = max_sub_hops
         self._pending_subs: dict[str, str] = {}   # task_id → task_description
 
-    def run(self, user_query: str) -> dict:
+    def run(self, user_query: str, chat_history: list = None) -> dict:
         """Run orchestrator loop — sub-agents are spawned lazily when needed."""
-        # Patch create_subagent / get_subagent_result to use real sub-loops
-        import tools.tool_definitions as td
-
         sub_loops: dict[str, AgentLoop] = {}
         sub_results: dict[str, dict]    = {}
 
-        original_create = td.create_subagent
-        original_get    = td.get_subagent_result
-
-        def _create(task: str) -> str:
+        def _create(params: dict) -> str:
             import uuid
             tid = f"sub_{uuid.uuid4().hex[:8]}"
             sub_loops[tid] = AgentLoop(
                 self.sub_model_fn, mode="search",
                 max_hops=self.max_sub_hops, verbose=False
             )
-            self._pending_subs[tid] = task
+            self._pending_subs[tid] = params.get("task", "")
             return json.dumps({"task_id": tid, "status": "pending"})
 
-        def _get(task_id: str) -> str:
+        def _get(params: dict) -> str:
+            task_id = params.get("task_id", "")
             if task_id not in sub_loops:
                 return json.dumps({"error": "task_id not found"})
             if task_id not in sub_results:
                 task = self._pending_subs.get(task_id, "Unknown task")
+                # Sub-agents do not get the main chat history, they only get the sub-task
                 sub_results[task_id] = sub_loops[task_id].run(task)
             r = sub_results[task_id]
             return json.dumps({
@@ -407,13 +407,12 @@ class PARLOrchestrator:
                 "hops":    r["hops"],
             })
 
-        td.create_subagent    = _create
-        td.get_subagent_result = _get
-        try:
-            result = self.main_loop.run(user_query)
-        finally:
-            td.create_subagent    = original_create
-            td.get_subagent_result = original_get
+        overrides = {
+            "create_subagent": _create,
+            "get_subagent_result": _get,
+        }
+
+        result = self.main_loop.run(user_query, chat_history, tool_overrides=overrides)
 
         # Attach sub-agent traces to result
         result["sub_results"] = sub_results

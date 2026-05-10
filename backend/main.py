@@ -301,10 +301,16 @@ async def chat_stream(req: Request):
         # Initialize Agent
         def local_model_fn(messages):
             return model_fn(messages, stream_queue=queue, image_b64=image)
+            
+        def sub_model_fn(messages):
+            # Sub-agents do NOT stream to the frontend queue to avoid text intermingling
+            return model_fn(messages, stream_queue=None, image_b64=image)
         
-        # Initialize Agent
-        agent = AgentLoop(
-            model_fn=local_model_fn, 
+        # Initialize Orchestrator
+        from agent_loop import PARLOrchestrator
+        agent = PARLOrchestrator(
+            main_model_fn=local_model_fn,
+            sub_model_fn=sub_model_fn,
             mode=mode,
             verbose=False,
             stream_callback=stream_callback
