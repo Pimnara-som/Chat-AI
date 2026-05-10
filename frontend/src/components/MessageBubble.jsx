@@ -138,28 +138,22 @@ function parseContent(raw) {
   }
 
   // ── Path 3: PARL <|channel|>thought format (old backend streaming directly)
-  // Strip using indexOf to handle partial streaming correctly
-  const lower = raw.toLowerCase();
-  const thoughtStart = lower.indexOf('<|channel|>thought');
-  if (thoughtStart !== -1) {
-    // Everything after <|channel|>thought is the thought until next <|channel|>
-    let afterTag = thoughtStart + '<|channel|>thought'.length;
-    // skip leading spaces
+  const thoughtMatch = raw.match(/<\|channel\|>\s*thought/i);
+  if (thoughtMatch) {
+    const thoughtStart = thoughtMatch.index;
+    let afterTag = thoughtStart + thoughtMatch[0].length;
     while (afterTag < raw.length && raw[afterTag] === ' ') afterTag++;
     const rest = raw.slice(afterTag);
-    const nextTag = rest.toLowerCase().indexOf('<|channel|>');
-    if (nextTag !== -1) {
-      // thought ends at next tag; answer comes after (strip the tag itself)
-      const thought = rest.slice(0, nextTag).trim();
-      const afterAnswer = rest.slice(nextTag);
-      // Strip all remaining <|channel|>xxx tags, keep the text after them
+    const nextTagMatch = rest.match(/<\|channel\|>/i);
+    if (nextTagMatch) {
+      const thought = rest.slice(0, nextTagMatch.index).trim();
+      const afterAnswer = rest.slice(nextTagMatch.index);
       const display = afterAnswer
         .replace(/<\|channel\|>\w*/gi, '')
         .replace(/<\|turn\|>/gi, '')
         .trim();
       return { thought, display };
     }
-    // Still streaming: everything is thought, no answer yet
     return { thought: rest.trim(), display: '' };
   }
 
