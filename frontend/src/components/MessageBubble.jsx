@@ -83,14 +83,27 @@ export default function MessageBubble({ message, isLastAI }) {
     },
   };
 
-  // Extract <think>...</think> content
+  // Extract Thought Process: Look for <think> tags OR "thought": "..." within JSON
   let displayContent = message.content || '';
   let thoughtContent = '';
 
+  // 1. Try to find <think> tags first (Native format)
   const thinkMatch = displayContent.match(/<think>([\s\S]*?)(?:<\/think>|$)/);
   if (thinkMatch) {
     thoughtContent = thinkMatch[1];
     displayContent = displayContent.replace(/<think>[\s\S]*?(?:<\/think>|$)/, '').trim();
+  } 
+  // 2. If no <think> tags, look for "thought": "..." in JSON (Agent format)
+  else {
+    // This regex looks for the content of the "thought" key in a JSON-like string
+    // It handles the streaming case where the ending quote might not be there yet
+    const jsonThoughtMatch = displayContent.match(/"thought":\s*"([^"]*)(?:"|$)/);
+    if (jsonThoughtMatch) {
+      thoughtContent = jsonThoughtMatch[1];
+      // We don't remove it from displayContent because we want to keep the JSON block intact 
+      // if it contains other fields like "action", but we might want to hide the raw JSON 
+      // if it's purely internal. However, for now, let's just show the thought block.
+    }
   }
 
   return (
@@ -110,7 +123,7 @@ export default function MessageBubble({ message, isLastAI }) {
           {thoughtContent && (
             <ThoughtBlock 
               content={thoughtContent} 
-              isStreaming={isStreaming || displayContent === ''} 
+              isStreaming={isStreaming || (displayContent === '' && !message.done)} 
             />
           )}
 
