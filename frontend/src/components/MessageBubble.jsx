@@ -223,8 +223,8 @@ export default function MessageBubble({ message, isStreaming }) {
     processedDisplay = processedDisplay.replace(/<\|channel\|>/g, '').replace(/<\|turn\|>/g, '').trim();
   }
 
-  // Show shimmer when: streaming AND no final answer yet (thought may or may not be present)
-  const showThinkingSpinner = isStreaming && !processedDisplay;
+  // Shimmer: only show when truly nothing yet (no thought, no answer)
+  const showThinkingSpinner = isStreaming && !thoughtContent && !processedDisplay;
 
   return (
     <div className={`msg-row ${isUser ? 'user' : 'ai'}${isStreaming ? ' streaming' : ''}`}>
