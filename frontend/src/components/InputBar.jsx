@@ -132,24 +132,6 @@ export default function InputBar({ onSend, isLoading }) {
               disabled={isLoading}
             />
 
-            {/* Report button */}
-            <button
-              className="btn-report"
-              onClick={() => {
-                if (!text.trim() && !image && !isLoading) {
-                  // If empty, use a default prompt for the report
-                  onSend("ช่วยสรุปและเขียนรายงานวิจัยฉบับสมบูรณ์จากข้อมูลล่าสุดที่เราคุยกัน", null, 'research_report');
-                } else {
-                  handleSend('research_report');
-                }
-              }}
-              disabled={isLoading}
-              title="สร้างรายงาน HTML"
-              type="button"
-            >
-              <FileText size={15} />
-            </button>
-
             {/* Send button */}
             <button
               className="btn-send"
