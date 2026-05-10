@@ -59,7 +59,7 @@ export default function App() {
   }, [currentId, handleNew, loadConversations]);
 
   // Send message
-  const handleSend = useCallback(async (text, image) => {
+  const handleSend = useCallback(async (text, image, mode = 'search') => {
     if (isStreaming) return;
     setError(null);
 
@@ -81,6 +81,7 @@ export default function App() {
       currentId,
       text,
       image,
+      mode,
       // onInit
       (event) => {
         resolvedConvId = event.conversationId;

@@ -77,7 +77,7 @@ export async function deleteConversation(id) {
  * @param {Function} onDone    - ()
  * @param {Function} onError   - (errorMsg)
  */
-export async function sendMessageStream(conversationId, message, image, onInit, onChunk, onDone, onError) {
+export async function sendMessageStream(conversationId, message, image, mode = 'search', onInit, onChunk, onDone, onError) {
   try {
     const res = await fetch(`${API_BASE}/chat/stream`, {
       method: 'POST',
@@ -85,7 +85,7 @@ export async function sendMessageStream(conversationId, message, image, onInit, 
         'Content-Type': 'application/json',
         'X-User-Id': getUserId()
       },
-      body: JSON.stringify({ conversationId, message, image }),
+      body: JSON.stringify({ conversationId, message, image, mode }),
     });
 
     if (!res.ok) {

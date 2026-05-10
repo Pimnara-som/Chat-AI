@@ -194,6 +194,7 @@ async def chat_stream(req: Request):
     message = body.get("message")
     image = body.get("image")
     conv_id = body.get("conversationId")
+    mode = body.get("mode", "search")  # search | research | research_report | coding
 
     if (not message or not message.strip()) and not image:
         raise HTTPException(status_code=400, detail="Message or image is required")
@@ -257,7 +258,7 @@ async def chat_stream(req: Request):
         # Initialize Agent
         agent = AgentLoop(
             model_fn=local_model_fn, 
-            mode="search", 
+            mode=mode,
             verbose=False,
             stream_callback=stream_callback
         )

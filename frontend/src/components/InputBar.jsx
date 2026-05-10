@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
-import { Send, Square, ImagePlus, X } from 'lucide-react';
+import { Send, Square, ImagePlus, X, FileText } from 'lucide-react';
 
 /** Compress image to JPEG at max 1024px & quality 0.75 before sending */
 function compressImage(dataUrl) {
@@ -37,10 +37,10 @@ export default function InputBar({ onSend, isLoading }) {
     ta.style.height = Math.min(ta.scrollHeight, 180) + 'px';
   }, [text]);
 
-  const handleSend = useCallback(() => {
+  const handleSend = useCallback((mode = 'search') => {
     const trimmed = text.trim();
     if ((!trimmed && !image) || isLoading || imageLoading) return;
-    onSend(trimmed, image);
+    onSend(trimmed, image, mode);
     setText('');
     setImage(null);
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
@@ -49,14 +49,14 @@ export default function InputBar({ onSend, isLoading }) {
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      handleSend();
+      handleSend('search');
     }
   };
 
   const handleFileChange = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    e.target.value = null; // reset so same file can be re-picked
+    e.target.value = null;
     setImageLoading(true);
     try {
       const reader = new FileReader();
@@ -103,7 +103,7 @@ export default function InputBar({ onSend, isLoading }) {
           )}
 
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10 }}>
-            {/* Image attach button — always enabled */}
+            {/* Image attach button */}
             <button
               className="btn-icon"
               style={{ flexShrink: 0, padding: '10px 8px' }}
@@ -132,9 +132,21 @@ export default function InputBar({ onSend, isLoading }) {
               disabled={isLoading}
             />
 
+            {/* Report button */}
+            <button
+              className="btn-report"
+              onClick={() => handleSend('research_report')}
+              disabled={!canSend}
+              title="สร้างรายงาน HTML"
+              type="button"
+            >
+              <FileText size={15} />
+            </button>
+
+            {/* Send button */}
             <button
               className="btn-send"
-              onClick={handleSend}
+              onClick={() => handleSend('search')}
               disabled={!canSend}
               title={isLoading ? 'Generating...' : 'Send'}
               type="button"

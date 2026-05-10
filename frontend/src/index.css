@@ -548,6 +548,22 @@ body {
 }
 .btn-send:hover:not(:disabled) { opacity: 0.85; transform: scale(1.04); }
 .btn-send:disabled { opacity: 0.35; cursor: not-allowed; transform: none; }
+.btn-report {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: rgba(124,92,252,0.12);
+  border: 1px solid rgba(124,92,252,0.3);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: var(--trans);
+  color: #a78bfa;
+}
+.btn-report:hover:not(:disabled) { background: rgba(124,92,252,0.25); transform: scale(1.04); }
+.btn-report:disabled { opacity: 0.35; cursor: not-allowed; }
 .input-hint {
   text-align: center;
   font-size: 11.5px;
