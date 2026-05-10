@@ -229,8 +229,15 @@ export default function MessageBubble({ message, isStreaming }) {
     processedDisplay = processedDisplay.replace(/<\|channel\|>/g, '').replace(/<\|turn\|>/g, '').trim();
   }
 
+  // Clean up Thought content (hide JSON tool calls)
+  let processedThought = thoughtContent;
+  if (processedThought) {
+    // Strip full or partial ```json ... ``` blocks
+    processedThought = processedThought.replace(/```json[\s\S]*?(```|$)/gi, '').trim();
+  }
+
   // Shimmer: only show when truly nothing yet (no thought, no answer)
-  const showThinkingSpinner = isStreaming && !thoughtContent && !processedDisplay;
+  const showThinkingSpinner = isStreaming && !processedThought && !processedDisplay;
 
   return (
     <div className={`msg-row ${isUser ? 'user' : 'ai'}${isStreaming ? ' streaming' : ''}`}>
@@ -246,8 +253,8 @@ export default function MessageBubble({ message, isStreaming }) {
           )}
 
           {/* Thought block */}
-          {(thoughtContent || showThinkingSpinner) && (
-            <ThoughtBlock content={thoughtContent} isStreaming={isStreaming && !displayContent} />
+          {(processedThought || showThinkingSpinner) && (
+            <ThoughtBlock content={processedThought} isStreaming={isStreaming && !displayContent} />
           )}
 
           {/* Main content */}
