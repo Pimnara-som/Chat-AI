@@ -29,7 +29,18 @@ export async function generateStreamingResponse(messages, onChunk, onDone, onErr
   try {
     const formattedMessages = [
       { role: 'system', content: SYSTEM_PROMPT },
-      ...messages.map((m) => ({ role: m.role, content: m.content })),
+      ...messages.map((m) => {
+        if (m.image) {
+          return {
+            role: m.role,
+            content: [
+              { type: 'text', text: m.content || ' ' },
+              { type: 'image_url', image_url: { url: m.image } }
+            ]
+          };
+        }
+        return { role: m.role, content: m.content };
+      }),
     ];
 
     const stream = await client.chat.completions.create({

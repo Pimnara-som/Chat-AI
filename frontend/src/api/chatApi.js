@@ -51,17 +51,18 @@ export async function deleteConversation(id) {
  * Send a message with streaming SSE.
  * @param {string|null} conversationId
  * @param {string} message
+ * @param {string|null} image
  * @param {Function} onInit    - ({conversationId})
  * @param {Function} onChunk   - (textDelta)
  * @param {Function} onDone    - ()
  * @param {Function} onError   - (errorMsg)
  */
-export async function sendMessageStream(conversationId, message, onInit, onChunk, onDone, onError) {
+export async function sendMessageStream(conversationId, message, image, onInit, onChunk, onDone, onError) {
   try {
     const res = await fetch(`${API_BASE}/chat/stream`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ conversationId, message }),
+      body: JSON.stringify({ conversationId, message, image }),
     });
 
     if (!res.ok) {

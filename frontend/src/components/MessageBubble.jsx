@@ -62,6 +62,9 @@ export default function MessageBubble({ message }) {
       </div>
       <div className="msg-content">
         <div className="msg-bubble">
+          {message.image && (
+            <img src={message.image} alt="Uploaded" className="msg-image" />
+          )}
           {isUser ? (
             <span style={{ whiteSpace: 'pre-wrap' }}>{message.content}</span>
           ) : (

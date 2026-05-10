@@ -59,7 +59,7 @@ export default function App() {
   }, [currentId, handleNew, loadConversations]);
 
   // Send message
-  const handleSend = useCallback(async (text) => {
+  const handleSend = useCallback(async (text, image) => {
     if (isStreaming) return;
     setError(null);
 
@@ -68,6 +68,7 @@ export default function App() {
       id: `tmp_${Date.now()}`,
       role: 'user',
       content: text,
+      image: image,
       timestamp: new Date().toISOString(),
     };
     setMessages((prev) => [...prev, tempUserMsg]);
@@ -79,6 +80,7 @@ export default function App() {
     await sendMessageStream(
       currentId,
       text,
+      image,
       // onInit
       (event) => {
         resolvedConvId = event.conversationId;

@@ -20,7 +20,7 @@ export function getAllConversations() {
     .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
 }
 
-export function addMessage(conversationId, role, content) {
+export function addMessage(conversationId, role, content, image = null) {
   const conv = conversations.get(conversationId);
   if (!conv) return null;
 
@@ -28,6 +28,7 @@ export function addMessage(conversationId, role, content) {
     id: uuidv4(),
     role,
     content,
+    image,
     timestamp: new Date().toISOString(),
   };
 
@@ -36,7 +37,8 @@ export function addMessage(conversationId, role, content) {
 
   // Auto-title from first user message
   if (role === 'user' && conv.messages.filter(m => m.role === 'user').length === 1) {
-    conv.title = content.slice(0, 60) + (content.length > 60 ? '...' : '');
+    const titleText = content || 'Image Upload';
+    conv.title = titleText.slice(0, 60) + (titleText.length > 60 ? '...' : '');
   }
 
   return message;

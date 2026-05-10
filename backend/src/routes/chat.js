@@ -10,10 +10,10 @@ const router = express.Router();
 
 // POST /api/chat/stream — SSE streaming chat
 router.post('/stream', async (req, res) => {
-  const { conversationId, message } = req.body;
+  const { conversationId, message, image } = req.body;
 
-  if (!message || !message.trim()) {
-    return res.status(400).json({ error: 'Message is required' });
+  if ((!message || !message.trim()) && !image) {
+    return res.status(400).json({ error: 'Message or image is required' });
   }
 
   let conv;
@@ -25,7 +25,7 @@ router.post('/stream', async (req, res) => {
   }
 
   // Save user message
-  const userMsg = addMessage(conv.id, 'user', message.trim());
+  const userMsg = addMessage(conv.id, 'user', message?.trim() || '', image);
 
   // SSE headers
   res.setHeader('Content-Type', 'text/event-stream');
