@@ -2,17 +2,19 @@
 
 AI Chat Agent powered by [Phonsiri/Gemma-4-E4B-it-PARL](https://huggingface.co/Phonsiri/Gemma-4-E4B-it-PARL) via **vLLM** (OpenAI-compatible API).
 
-Built with **Node.js + Express** (backend) and **React + Vite** (frontend).
+Built with **Python + FastAPI** (backend) and **React + Vite** (frontend).
 
 ---
 
 ## Features
 
 - Real-time streaming responses (Server-Sent Events)
+- Recursive Multi-Agent Orchestration (PARL)
 - Multi-turn conversation with persistent history (in-memory)
-- Markdown rendering with syntax highlighting and copy button
-- Dark mode glassmorphism UI
+- Markdown rendering with syntax highlighting and Copy/Speak buttons
+- Premium Dark mode glassmorphism UI
 - Supports Thai and English
+- **Distraction-free:** Automatically hides JSON tool calls and internal artifacts
 
 ---
 
@@ -20,13 +22,10 @@ Built with **Node.js + Express** (backend) and **React + Vite** (frontend).
 
 ```
 Chat-AI/
-├── backend/          Node.js + Express API server
-│   ├── src/
-│   │   ├── index.js
-│   │   ├── routes/
-│   │   ├── services/   ← aiService.js calls vLLM
-│   │   └── store/
-│   └── .env.example
+├── backend/          Python FastAPI server
+│   ├── main.py       Entry point
+│   ├── agent/        Agentic loop and PARL logic
+│   └── .env.example  Environment configuration (Need HF_TOKEN)
 └── frontend/         React + Vite client
     ├── src/
     │   ├── App.jsx
