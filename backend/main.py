@@ -23,7 +23,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "agent/3_agent_loop")
 from agent_loop import AgentLoop
 
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
+import threading
+from transformers import AutoModelForCausalLM, AutoTokenizer, TextIteratorStreamer
 
 app = FastAPI()
 
@@ -55,7 +56,7 @@ class ChatRequest(BaseModel):
     image: Optional[str] = None
 
 # Custom model function using local transformers
-def model_fn(messages: List[Dict]) -> str:
+def model_fn(messages: List[Dict], stream_queue=None) -> str:
     try:
         device = next(model.parameters()).device
         inputs = tokenizer.apply_chat_template(
@@ -67,17 +68,35 @@ def model_fn(messages: List[Dict]) -> str:
             enable_thinking=True,
         ).to(device)
         
-        with torch.no_grad():
-            out = model.generate(
-                **inputs,
-                max_new_tokens=2048,
-                temperature=0.7,
-                do_sample=True,
-                top_p=0.9,
-                pad_token_id=tokenizer.eos_token_id,
-            )
-        new_tokens = out[0][inputs["input_ids"].shape[1]:]
-        return tokenizer.decode(new_tokens, skip_special_tokens=False)
+        streamer = TextIteratorStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
+        
+        generation_kwargs = dict(
+            **inputs,
+            max_new_tokens=2048,
+            temperature=0.7,
+            do_sample=True,
+            top_p=0.9,
+            pad_token_id=tokenizer.eos_token_id,
+            streamer=streamer,
+        )
+        
+        thread = threading.Thread(target=model.generate, kwargs=generation_kwargs)
+        thread.start()
+        
+        full_text = ""
+        for new_text in streamer:
+            full_text += new_text
+            # Stream live token if queue is attached
+            if stream_queue:
+                stream_queue.put_nowait({"type": "chunk", "text": new_text})
+                
+        thread.join()
+        
+        # Add a newline after each hop's generation to separate from Tool Results
+        if stream_queue:
+            stream_queue.put_nowait({"type": "chunk", "text": "\n\n"})
+            
+        return full_text
     except Exception as e:
         print("Model error:", e)
         # Fallback to finish action on error
@@ -168,25 +187,8 @@ async def chat_stream(req: Request):
     queue = asyncio.Queue()
 
     def stream_callback(tag, msg):
-        # We don't stream raw USER/MODEL OUTPUT to keep it clean, but we stream actions and thoughts
-        if tag in ["USER", "DONE"]:
-            return
-            
         if "MODEL OUTPUT" in tag:
-            # Parse thought if possible
-            try:
-                # Find JSON
-                import re
-                blocks = re.findall(r"```(?:json)?\n?(.*?)\n?```", str(msg), re.DOTALL)
-                text_to_parse = blocks[-1] if blocks else str(msg)
-                start = text_to_parse.find("{")
-                end = text_to_parse.rfind("}")
-                if start != -1 and end != -1:
-                    obj = json.loads(text_to_parse[start:end+1])
-                    if "thought" in obj:
-                        queue.put_nowait({"type": "chunk", "text": f"\\n> 🧠 **Thought**: *{obj['thought']}*\\n\\n"})
-            except Exception:
-                pass
+            # Skip because we are streaming tokens live!
             return
             
         if "ACTION" in tag or "TOOL RESULT" in tag or "WARN" in tag or "ABORT" in tag:
@@ -194,7 +196,7 @@ async def chat_stream(req: Request):
             clean_msg = str(msg).strip()
             if len(clean_msg) > 300:
                 clean_msg = clean_msg[:300] + "... [truncated]"
-            formatted = f"\\n> 🛠️ **{tag}**:\\n> ```\\n> {clean_msg}\\n> ```\\n\\n"
+            formatted = f"\n> 🛠️ **{tag}**:\n> ```\n> {clean_msg}\n> ```\n\n"
             queue.put_nowait({"type": "chunk", "text": formatted})
 
     async def generate_sse():
@@ -205,8 +207,12 @@ async def chat_stream(req: Request):
         loop = asyncio.get_event_loop()
         
         # Initialize Agent
+        def local_model_fn(messages):
+            return model_fn(messages, stream_queue=queue)
+        
+        # Initialize Agent
         agent = AgentLoop(
-            model_fn=model_fn, 
+            model_fn=local_model_fn, 
             mode="search", 
             verbose=False,
             stream_callback=stream_callback
@@ -234,16 +240,6 @@ async def chat_stream(req: Request):
         # Get final result
         result = task.result()
         final_answer = result.get("answer", "No answer provided.")
-        
-        # Add a clear separator before final answer
-        yield f'data: {json.dumps({"type": "chunk", "text": "\\n---\\n\\n"})}\\n\\n'
-        
-        # Stream the final answer
-        chunk_size = 20
-        for i in range(0, len(final_answer), chunk_size):
-            text_chunk = final_answer[i:i+chunk_size]
-            yield f'data: {json.dumps({"type": "chunk", "text": text_chunk})}\\n\\n'
-            await asyncio.sleep(0.01)
             
         # Save AI message
         ai_msg = {
