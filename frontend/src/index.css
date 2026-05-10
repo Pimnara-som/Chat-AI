@@ -717,3 +717,22 @@ body {
   50%  { opacity: 1; }
   100% { opacity: 0.3; }
 }
+
+/* ─── Citation Links ─────────────────────────────────────────────── */
+.citation-link {
+  display: inline-block;
+  font-size: 0.85em;
+  vertical-align: super;
+  background: rgba(124, 92, 252, 0.15);
+  color: #a78bfa !important;
+  padding: 0 5px;
+  border-radius: 4px;
+  margin: 0 2px;
+  text-decoration: none !important;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+.citation-link:hover {
+  background: rgba(124, 92, 252, 0.3);
+  transform: translateY(-1px);
+}

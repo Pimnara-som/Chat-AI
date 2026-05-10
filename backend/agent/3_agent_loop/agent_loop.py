@@ -115,7 +115,20 @@ def _parse_action(text: str) -> dict | None:
             
     if candidates:
         return candidates[-1] # Take the last one found
-            
+        
+    # 3. Fallback for PARL fine-tuned models that output <|channel|> instead of JSON
+    if "<|channel|>" in text:
+        # Check if it contains <|channel|>thought
+        # Extract the non-thought channel
+        matches = re.findall(r"<\|channel\|>(?!thought\b)(.*?)(?:<\|channel\|>|<\|turn\|>|$)", text, re.DOTALL)
+        if matches:
+            # We treat the last channel output as the final answer
+            answer = matches[-1].strip()
+            return {"action": "finish", "params": {"answer": answer}}
+        
+        # If no other channel, maybe just return everything as answer
+        return {"action": "finish", "params": {"answer": text}}
+
     return None
 
 

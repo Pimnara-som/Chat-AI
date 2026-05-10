@@ -141,10 +141,30 @@ export default function MessageBubble({ message, isStreaming }) {
       const value = String(children).replace(/\n$/, '');
       if (!inline && match) return <CodeBlock language={match[1]} value={value} />;
       return <code className={className} {...props}>{children}</code>;
+    a: ({ node, href, children, ...props }) => {
+      if (href && href.startsWith('citation:')) {
+        return (
+          <a href={href} className="citation-link" title={`View Reference`} {...props}>
+            {children}
+          </a>
+        );
+      }
+      return <a href={href} target="_blank" rel="noopener noreferrer" {...props}>{children}</a>;
     },
   };
 
   const { display: displayContent, thought: thoughtContent } = parseContent(message.content);
+
+  // Preprocess displayContent to convert [1], [1, 5] into markdown links
+  let processedDisplay = displayContent;
+  if (processedDisplay) {
+    processedDisplay = processedDisplay.replace(/\[([\d,\s]+)\]/g, (match, nums) => {
+      if (/^\d+(?:,\s*\d+)*$/.test(nums)) {
+        return `[${match}](citation:${nums.replace(/\s+/g, '')})`;
+      }
+      return match;
+    });
+  }
 
   // isStreaming prop is passed from ChatWindow for the live streaming bubble
   const showThinkingSpinner = isStreaming && !thoughtContent && !displayContent;
@@ -166,9 +186,9 @@ export default function MessageBubble({ message, isStreaming }) {
 
           {isUser ? (
             <span style={{ whiteSpace: 'pre-wrap' }}>{displayContent}</span>
-          ) : displayContent ? (
+          ) : processedDisplay ? (
             <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
-              {displayContent}
+              {processedDisplay}
             </ReactMarkdown>
           ) : showThinkingSpinner ? (
             <div className="typing-indicator">
