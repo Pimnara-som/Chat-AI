@@ -37,31 +37,29 @@ def _compress_tool_result(result: str, budget: int = 20000) -> str:
 
 
 def _emergency_trim(msgs: list[dict], max_tokens: int) -> list[dict]:
-    """ถ้า context ใหญ่เกิน เก็บแค่ system + user_query + 2 tool turns ล่าสุด
-    [Fix #9] ใช้ zip_longest เพื่อไม่ตัด assistant turn ล่าสุดออก"""
+    """ถ้า context ใหญ่เกิน เก็บแค่ system + latest chat history + 2 tool turns ล่าสุด"""
     from itertools import zip_longest
     system_msg  = msgs[0]
-    user_msg    = msgs[1]
 
-    tool_msgs   = [m for m in msgs[2:] if m["role"] == "user" and "[Tool:" in m.get("content", "")]
-    assist_msgs = [m for m in msgs[2:] if m["role"] == "assistant"]
+    # แยกข้อความปกติ (user/assistant ที่ไม่ใช่ tool) และข้อความที่เกี่ยวกับ tool
+    normal_msgs = [m for m in msgs[1:] if m["role"] == "assistant" or (m["role"] == "user" and "[Tool:" not in m.get("content", ""))]
+    tool_msgs   = [m for m in msgs[1:] if m["role"] == "user" and "[Tool:" in m.get("content", "")]
+    
+    # เก็บแชทปกติแค่ 4 turn ล่าสุด
+    recent_normal = normal_msgs[-4:] if len(normal_msgs) >= 4 else normal_msgs
 
-    trimmed = [system_msg, user_msg]
+    trimmed = [system_msg] + recent_normal
+    
     if len(tool_msgs) > 2:
         trimmed.append({
             "role": "user",
             "content": f"[Context: ค้นหาไปแล้ว {len(tool_msgs)} ครั้ง บันทึก 2 ครั้งล่าสุด]"
         })
 
-    # [Fix #9] zip_longest so last assistant msg is never dropped
-    last_assists = assist_msgs[-2:] if len(assist_msgs) >= 2 else assist_msgs
-    last_tools   = tool_msgs[-2:]   if len(tool_msgs) >= 2   else tool_msgs
-    for a, t in zip_longest(last_assists, last_tools):
-        if a is not None:
-            trimmed.append(a)
-        if t is not None:
-            trimmed.append(t)
-
+    # ใส่ 2 tool turn ล่าสุด
+    last_tools = tool_msgs[-2:] if len(tool_msgs) >= 2 else tool_msgs
+    trimmed.extend(last_tools)
+            
     return trimmed
 
 
@@ -253,7 +251,7 @@ class AgentLoop:
 
     # ── main run method ────────────────────────────────────────────────────────
 
-    def run(self, user_query: str) -> dict:
+    def run(self, user_query: str, chat_history: list = None) -> dict:
         """
         Execute multi-hop agent loop for a single user query.
 
@@ -265,7 +263,12 @@ class AgentLoop:
           history      : list  — full turn-by-turn trace
           success      : bool
         """
-        history = [{"role": "user", "content": user_query}]
+        # Start history with previous chat messages, then append current query
+        history = []
+        if chat_history:
+            history.extend(chat_history)
+        
+        history.append({"role": "user", "content": user_query})
         self._log("USER", user_query)
 
         parse_failures = 0   # [Fix #3] Track consecutive JSON parse failures

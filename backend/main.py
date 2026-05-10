@@ -313,8 +313,12 @@ async def chat_stream(req: Request):
         # We need to pass the query.
         # (query is built above, outside generate_sse)
 
+        # Extract past messages (excluding the current one we just appended)
+        past_msgs = conversations[conv_id]["messages"][:-1]
+        chat_history = [{"role": m["role"], "content": m["content"]} for m in past_msgs]
+
         # Start the blocking agent run in a thread
-        task = loop.run_in_executor(None, agent.run, query)
+        task = loop.run_in_executor(None, agent.run, query, chat_history)
         
         # Yield chunks from queue while task is running
         while not task.done():
