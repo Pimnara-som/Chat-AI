@@ -101,96 +101,87 @@ function formatTime(iso) {
   return new Date(iso).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
 }
 
-/* ─── Strip ALL model-specific tags from display text ───────────── */
-function cleanDisplay(text) {
+/* ─── Strip ALL model channel formatting from a string ──────────── */
+function stripChannelTags(text) {
   if (!text) return '';
+  // Remove ALL <|channel|>xxx tags and content up to the next tag
+  // e.g. "<|channel|>thought hello <|channel|>assistant bye" → " bye"
+  // We keep only content after the LAST non-thought channel tag
   return text
-    // *** ALWAYS strip <|channel|>word and anything up to next tag ***
-    .replace(/<\|channel\|>\w*/gi, '')
     .replace(/<\|turn\|>/gi, '')
-    // Strip tool blockquotes (only lines with 🛠️)
-    .replace(/^> 🛠️.*$\n?/gm, '')
-    // Strip JSON action blocks
-    .replace(/```json\n?\{[\s\S]*?"action"[\s\S]*?\}\n?```/g, '')
-    .replace(/^\{[\s\S]*?"action"\s*:[\s\S]*?\}\s*$/gm, '')
+    .replace(/<\|channel\|>\w*/gi, '')
     .trim();
 }
 
-/* ─── Parse agent / model output ────────────────────────────────── */
+/* ─── Parse agent / model output ─────────────────────────────────── */
 function parseContent(raw) {
   if (!raw) return { display: '', thought: '' };
 
-  // Primary path: structured format from App.jsx streaming state machine
+  // ── Path 1: new App.jsx structured format (__THOUGHT__ / __ANSWER__)
   if (raw.startsWith('__THOUGHT__')) {
     const answerIdx = raw.indexOf('__ANSWER__');
     if (answerIdx !== -1) {
       return {
         thought: raw.slice('__THOUGHT__'.length, answerIdx).trim(),
-        display: cleanDisplay(raw.slice(answerIdx + '__ANSWER__'.length)),
+        display: raw.slice(answerIdx + '__ANSWER__'.length).trim(),
       };
     }
-    // Only thought, no answer yet (still streaming thought)
-    return {
-      thought: raw.slice('__THOUGHT__'.length).trim(),
-      display: '',
-    };
+    return { thought: raw.slice('__THOUGHT__'.length).trim(), display: '' };
   }
 
-  // Fallback for saved messages that still have raw channel tags
-  let display = raw;
-  let thought = '';
-
-  // Native <think>...</think>
-  const thinkMatch = display.match(/<think>([\s\S]*?)(?:<\/think>|$)/);
+  // ── Path 2: Native <think>...</think>
+  const thinkMatch = raw.match(/<think>([\s\S]*?)(?:<\/think>|$)/);
   if (thinkMatch) {
-    thought = thinkMatch[1].trim();
-    display = display.replace(/<think>[\s\S]*?(?:<\/think>|$)/, '').trim();
-    return { display: cleanDisplay(display), thought };
+    const thought = thinkMatch[1].trim();
+    const display = raw.replace(/<think>[\s\S]*?(?:<\/think>|$)/, '').trim();
+    return { thought, display };
   }
 
-  // <|channel|>thought ... (PARL model — old stored messages)
-  const lowerDisplay = display.toLowerCase();
-  const thoughtTagIdx = lowerDisplay.indexOf('<|channel|>thought');
-  if (thoughtTagIdx !== -1) {
-    const afterTagStart = thoughtTagIdx + '<|channel|>thought'.length;
-    let contentStart = afterTagStart;
-    while (contentStart < display.length && display[contentStart] === ' ') contentStart++;
-    const rest = display.slice(contentStart);
-    const closingIdx = rest.toLowerCase().indexOf('<|channel|>');
-    if (closingIdx !== -1) {
-      thought = rest.slice(0, closingIdx).trim();
-      const afterThought = rest.slice(closingIdx);
-      display = afterThought.replace(/<\|channel\|>[^<]*/gi, '').replace(/<\|turn\|>/gi, '').trim();
-    } else {
-      thought = rest.trim();
-      display = '';
+  // ── Path 3: PARL <|channel|>thought format (old backend streaming directly)
+  // Strip using indexOf to handle partial streaming correctly
+  const lower = raw.toLowerCase();
+  const thoughtStart = lower.indexOf('<|channel|>thought');
+  if (thoughtStart !== -1) {
+    // Everything after <|channel|>thought is the thought until next <|channel|>
+    let afterTag = thoughtStart + '<|channel|>thought'.length;
+    // skip leading spaces
+    while (afterTag < raw.length && raw[afterTag] === ' ') afterTag++;
+    const rest = raw.slice(afterTag);
+    const nextTag = rest.toLowerCase().indexOf('<|channel|>');
+    if (nextTag !== -1) {
+      // thought ends at next tag; answer comes after (strip the tag itself)
+      const thought = rest.slice(0, nextTag).trim();
+      const afterAnswer = rest.slice(nextTag);
+      // Strip all remaining <|channel|>xxx tags, keep the text after them
+      const display = afterAnswer
+        .replace(/<\|channel\|>\w*/gi, '')
+        .replace(/<\|turn\|>/gi, '')
+        .trim();
+      return { thought, display };
     }
-    return { display: cleanDisplay(display), thought };
+    // Still streaming: everything is thought, no answer yet
+    return { thought: rest.trim(), display: '' };
   }
 
-  // Strip leftover channel tags
-  if (display.includes('<|channel|>')) {
-    const match = display.match(/<\|channel\|>(\w+)\s*([\s\S]*)/i);
-    if (match) thought = `[${match[1]}] ${match[2].trim()}`;
-    display = display.replace(/<\|channel\|>[\s\S]*/gi, '').trim();
-    return { display: cleanDisplay(display), thought };
+  // ── Path 4: Any other leftover <|channel|> (strip entirely, show nothing)
+  if (raw.includes('<|channel|>')) {
+    return { thought: '', display: '' };
   }
 
-  // Agent JSON format
-  const jsonBlockMatch = display.match(/```json\n?([\s\S]*?)\n?```/);
-  const jsonInlineMatch = display.match(/(\{[\s\S]*\})/);
-  const jsonMatch = jsonBlockMatch || jsonInlineMatch;
+  // ── Path 5: Agent JSON format
+  const jsonMatch = raw.match(/```json\n?([\s\S]*?)\n?```/) || raw.match(/(\{[\s\S]*\})/);
   if (jsonMatch) {
     try {
       const obj = JSON.parse(jsonMatch[1].trim());
-      if (obj.thought) thought = obj.thought;
-      if (obj.action === 'finish' && obj.params?.answer) return { display: cleanDisplay(obj.params.answer), thought };
-      if (obj.answer) return { display: cleanDisplay(obj.answer), thought };
-      if (obj.action && obj.action !== 'finish') return { display: '', thought: thought || JSON.stringify(obj) };
+      const thought = obj.thought || '';
+      if (obj.action === 'finish' && obj.params?.answer) return { display: obj.params.answer.trim(), thought };
+      if (obj.answer) return { display: obj.answer.trim(), thought };
+      if (obj.action && obj.action !== 'finish') return { display: '', thought };
     } catch (_) {}
   }
 
-  return { display: cleanDisplay(display), thought };
+  // ── Path 6: Plain text, just clean up tags
+  return { thought: '', display: stripChannelTags(raw) };
 }
 
 /* ─── Main Component ────────────────────────────────────────────── */
