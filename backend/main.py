@@ -126,14 +126,69 @@ def model_fn(messages: List[Dict], stream_queue=None, image_b64: str = None) -> 
         thread.start()
 
         full_text = ""
+        buffer = ""
+        stream_state = "init"  # init → thought → answer
+
         for new_text in streamer:
             full_text += new_text
+            buffer += new_text
+
             if stream_queue:
-                stream_queue.put_nowait({"type": "chunk", "text": new_text})
+                # Detect <|channel|>thought opening tag
+                if stream_state == "init":
+                    lower_buf = buffer.lower()
+                    tag = "<|channel|>thought"
+                    if tag in lower_buf:
+                        stream_state = "thought"
+                        buffer = ""  # clear prefix tag from buffer
+                        stream_queue.put_nowait({"type": "thought_start"})
+                        continue
+                    # Guard: if no tag prefix and enough chars, maybe raw model (no PARL format)
+                    if len(buffer) > 30 and "<|channel|>" not in buffer.lower():
+                        stream_state = "answer"
+                        stream_queue.put_nowait({"type": "chunk", "text": buffer})
+                        buffer = ""
+                    continue
+
+                if stream_state == "thought":
+                    # Check if closing <|channel|> tag arrived (signals end of thought)
+                    lower_buf = buffer.lower()
+                    close_idx = lower_buf.find("<|channel|>")
+                    if close_idx != -1:
+                        # Send remaining thought text
+                        thought_tail = buffer[:close_idx]
+                        if thought_tail:
+                            stream_queue.put_nowait({"type": "thought_chunk", "text": thought_tail})
+                        stream_queue.put_nowait({"type": "thought_end"})
+                        stream_state = "answer"
+                        # Content after the closing tag goes to answer
+                        rest = buffer[close_idx:]
+                        # Strip the <|channel|>xxx tag itself
+                        import re
+                        rest = re.sub(r'<\|channel\|>\w*', '', rest, flags=re.IGNORECASE)
+                        buffer = rest
+                        if buffer.strip():
+                            stream_queue.put_nowait({"type": "chunk", "text": buffer})
+                            buffer = ""
+                    else:
+                        # Stream thought chunk
+                        stream_queue.put_nowait({"type": "thought_chunk", "text": buffer})
+                        buffer = ""
+                    continue
+
+                if stream_state == "answer":
+                    # Strip any remaining channel tags
+                    clean = buffer.replace("<|turn|>", "")
+                    if clean.strip():
+                        stream_queue.put_nowait({"type": "chunk", "text": clean})
+                    buffer = ""
 
         thread.join()
 
         if stream_queue:
+            if stream_state == "thought":
+                # Model ended while still in thought (no closing tag)
+                stream_queue.put_nowait({"type": "thought_end"})
             stream_queue.put_nowait({"type": "chunk", "text": "\n\n"})
 
         return full_text

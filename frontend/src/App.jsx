@@ -76,6 +76,16 @@ export default function App() {
     setStreamingText('');
 
     let resolvedConvId = currentId;
+    let thoughtBuf = '';
+    let answerBuf = '';
+    let inThought = false;
+
+    // Encode thought and answer into one string for MessageBubble to parse
+    const buildContent = () => {
+      if (thoughtBuf && answerBuf) return `__THOUGHT__${thoughtBuf}__ANSWER__${answerBuf}`;
+      if (thoughtBuf) return `__THOUGHT__${thoughtBuf}`;
+      return answerBuf;
+    };
 
     await sendMessageStream(
       currentId,
@@ -89,8 +99,21 @@ export default function App() {
         loadConversations();
       },
       // onChunk
-      (delta) => {
-        setStreamingText((prev) => prev + delta);
+      (chunk) => {
+        if (typeof chunk === 'string') {
+          // Legacy plain-text chunk
+          answerBuf += chunk;
+        } else if (chunk.kind === 'thought_start') {
+          inThought = true;
+          thoughtBuf = '';
+        } else if (chunk.kind === 'thought') {
+          thoughtBuf += chunk.text;
+        } else if (chunk.kind === 'thought_end') {
+          inThought = false;
+        } else if (chunk.kind === 'answer') {
+          answerBuf += chunk.text;
+        }
+        setStreamingText(buildContent());
       },
       // onDone
       async () => {

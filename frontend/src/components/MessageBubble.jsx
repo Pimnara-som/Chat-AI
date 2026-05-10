@@ -121,10 +121,28 @@ function cleanDisplay(text) {
 /* ─── Parse agent / model output ────────────────────────────────── */
 function parseContent(raw) {
   if (!raw) return { display: '', thought: '' };
+
+  // Primary path: structured format from App.jsx streaming state machine
+  if (raw.startsWith('__THOUGHT__')) {
+    const answerIdx = raw.indexOf('__ANSWER__');
+    if (answerIdx !== -1) {
+      return {
+        thought: raw.slice('__THOUGHT__'.length, answerIdx).trim(),
+        display: cleanDisplay(raw.slice(answerIdx + '__ANSWER__'.length)),
+      };
+    }
+    // Only thought, no answer yet (still streaming thought)
+    return {
+      thought: raw.slice('__THOUGHT__'.length).trim(),
+      display: '',
+    };
+  }
+
+  // Fallback for saved messages that still have raw channel tags
   let display = raw;
   let thought = '';
 
-  // 1. Native <think>...</think> (Gemma native thinking)
+  // Native <think>...</think>
   const thinkMatch = display.match(/<think>([\s\S]*?)(?:<\/think>|$)/);
   if (thinkMatch) {
     thought = thinkMatch[1].trim();
@@ -132,14 +150,13 @@ function parseContent(raw) {
     return { display: cleanDisplay(display), thought };
   }
 
-  // 2. <|channel|>thought ... (PARL fine-tuned model format)
+  // <|channel|>thought ... (PARL model — old stored messages)
   const lowerDisplay = display.toLowerCase();
   const thoughtTagIdx = lowerDisplay.indexOf('<|channel|>thought');
   if (thoughtTagIdx !== -1) {
     const afterTagStart = thoughtTagIdx + '<|channel|>thought'.length;
     let contentStart = afterTagStart;
     while (contentStart < display.length && display[contentStart] === ' ') contentStart++;
-
     const rest = display.slice(contentStart);
     const closingIdx = rest.toLowerCase().indexOf('<|channel|>');
     if (closingIdx !== -1) {
@@ -147,14 +164,13 @@ function parseContent(raw) {
       const afterThought = rest.slice(closingIdx);
       display = afterThought.replace(/<\|channel\|>[^<]*/gi, '').replace(/<\|turn\|>/gi, '').trim();
     } else {
-      // Still streaming thought — display is empty until thought ends
       thought = rest.trim();
       display = '';
     }
     return { display: cleanDisplay(display), thought };
   }
 
-  // 3. Strip leftover channel tags (non-thought channels)
+  // Strip leftover channel tags
   if (display.includes('<|channel|>')) {
     const match = display.match(/<\|channel\|>(\w+)\s*([\s\S]*)/i);
     if (match) thought = `[${match[1]}] ${match[2].trim()}`;
@@ -162,7 +178,7 @@ function parseContent(raw) {
     return { display: cleanDisplay(display), thought };
   }
 
-  // 4. Agent JSON format — extract answer from finish action
+  // Agent JSON format
   const jsonBlockMatch = display.match(/```json\n?([\s\S]*?)\n?```/);
   const jsonInlineMatch = display.match(/(\{[\s\S]*\})/);
   const jsonMatch = jsonBlockMatch || jsonInlineMatch;

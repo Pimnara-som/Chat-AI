@@ -113,10 +113,13 @@ export async function sendMessageStream(conversationId, message, image, mode = '
         if (!raw) continue;
         try {
           const event = JSON.parse(raw);
-          if (event.type === 'init')  onInit(event);
-          if (event.type === 'chunk') onChunk(event.text);
-          if (event.type === 'done')  onDone();
-          if (event.type === 'error') onError(event.message);
+          if (event.type === 'init')         onInit(event);
+          if (event.type === 'chunk')        onChunk({ text: event.text, kind: 'answer' });
+          if (event.type === 'thought_start') onChunk({ text: '', kind: 'thought_start' });
+          if (event.type === 'thought_chunk') onChunk({ text: event.text, kind: 'thought' });
+          if (event.type === 'thought_end')   onChunk({ text: '', kind: 'thought_end' });
+          if (event.type === 'done')         onDone();
+          if (event.type === 'error')        onError(event.message);
         } catch (_) { /* ignore malformed SSE lines */ }
       }
     }
