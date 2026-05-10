@@ -33,26 +33,19 @@ function CodeBlock({ language, value }) {
 }
 
 function ThoughtBlock({ content, isStreaming }) {
-  const [userOpened, setUserOpened] = useState(false);
-  // While streaming: forced open. After done: closed by default, user can toggle.
-  const isOpen = isStreaming ? true : userOpened;
+  const [isOpen, setIsOpen] = useState(isStreaming); // open while streaming, closed after
 
-  // When streaming stops, auto-close
-  const prevStreaming = useRef(isStreaming);
+  // When streaming ends, auto-close
   useEffect(() => {
-    if (prevStreaming.current && !isStreaming) {
-      setUserOpened(false); // auto-close when done
-    }
-    prevStreaming.current = isStreaming;
+    if (!isStreaming) setIsOpen(false);
   }, [isStreaming]);
 
   return (
     <div className="thought-container">
       <button
         className={`thought-header ${isOpen ? 'active' : ''}`}
-        onClick={() => !isStreaming && setUserOpened(v => !v)}
+        onClick={() => setIsOpen(v => !v)}
         type="button"
-        style={{ cursor: isStreaming ? 'default' : 'pointer' }}
       >
         <div className="thought-title">
           {isStreaming
@@ -61,11 +54,9 @@ function ThoughtBlock({ content, isStreaming }) {
           }
           <span>{isStreaming ? 'กำลังวิเคราะห์...' : 'กระบวนการคิด'}</span>
         </div>
-        {!isStreaming && (
-          <span className="thought-chevron">
-            {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-          </span>
-        )}
+        <span className="thought-chevron">
+          {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        </span>
       </button>
       {isOpen && content && (
         <div className="thought-content">
@@ -91,7 +82,7 @@ function parseContent(raw) {
   let display = raw || '';
   let thought = '';
 
-  // 1. Native <think> tags
+  // 1. Native <think>...</think> tags (Gemma native thinking)
   const thinkMatch = display.match(/<think>([\s\S]*?)(?:<\/think>|$)/);
   if (thinkMatch) {
     thought = thinkMatch[1].trim();
@@ -99,7 +90,29 @@ function parseContent(raw) {
     return { display, thought };
   }
 
-  // 2. Agent JSON format
+  // 2. <|channel|>thought ... (model internal channel format)
+  const channelThoughtMatch = display.match(/<\|channel\|>thought\s*([\s\S]*?)(?:<\|channel\|>|$)/);
+  if (channelThoughtMatch) {
+    thought = channelThoughtMatch[1].trim();
+    // Remove everything up to the closing channel tag
+    display = display.replace(/<\|channel\|>thought[\s\S]*?(?:<\|channel\|>|$)/, '').trim();
+    // Also strip any remaining <|channel|> tags
+    display = display.replace(/<\|channel\|>[^<]*/g, '').trim();
+    return { display, thought };
+  }
+
+  // 3. Strip any leftover <|channel|> prefixes from display
+  if (display.includes('<|channel|>')) {
+    // Extract text after the last channel tag as thought
+    const lastChannelMatch = display.match(/<\|channel\|>(\w+)\s*([\s\S]*)/);
+    if (lastChannelMatch) {
+      thought = `[${lastChannelMatch[1]}] ${lastChannelMatch[2].trim()}`;
+    }
+    display = display.replace(/<\|channel\|>[\s\S]*/g, '').trim();
+    return { display, thought };
+  }
+
+  // 4. Agent JSON format ("thought" / "action" / "answer" fields)
   const hasJson = display.includes('"thought":') || display.includes('"action":');
   if (!hasJson) return { display, thought };
 
@@ -115,12 +128,6 @@ function parseContent(raw) {
     // Intermediate step — hide raw JSON, show nothing in main bubble
     display = '';
   }
-
-  // Clean leftover markdown json fences or channel tags
-  display = display
-    .replace(/<\|channel\|>[\s\S]*?<\|channel\|>/g, '')
-    .replace(/```json[\s\S]*?```/g, '')
-    .trim();
 
   return { display, thought };
 }
