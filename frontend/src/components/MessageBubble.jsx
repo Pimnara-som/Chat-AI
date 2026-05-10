@@ -141,6 +141,7 @@ export default function MessageBubble({ message, isStreaming }) {
       const value = String(children).replace(/\n$/, '');
       if (!inline && match) return <CodeBlock language={match[1]} value={value} />;
       return <code className={className} {...props}>{children}</code>;
+    },
     a: ({ node, href, children, ...props }) => {
       if (href && href.startsWith('citation:')) {
         return (
