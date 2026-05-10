@@ -101,20 +101,18 @@ function formatTime(iso) {
   return new Date(iso).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
 }
 
-/* ─── Strip agent noise from raw content ────────────────────────── */
+/* ─── Strip ALL model-specific tags from display text ───────────── */
 function cleanDisplay(text) {
   if (!text) return '';
   return text
-    // Only strip tool/agent blockquotes (contain 🛠️ or agent JSON fences)
-    .replace(/^> 🛠️.*$\n?/gm, '')
-    .replace(/^> ```[\s\S]*?^> ```\n?/gm, '')
-    // Strip JSON action blocks (intermediate agent steps)
-    .replace(/```json\n?\{[\s\S]*?"action"[\s\S]*?\}\n?```/g, '')
-    // Strip bare JSON objects that look like agent actions (only whole-line JSON)
-    .replace(/^\{[\s\S]*?"action"\s*:[\s\S]*?\}\s*$/gm, '')
-    // Strip leftover channel/turn tags
-    .replace(/<\|channel\|>/gi, '')
+    // *** ALWAYS strip <|channel|>word and anything up to next tag ***
+    .replace(/<\|channel\|>\w*/gi, '')
     .replace(/<\|turn\|>/gi, '')
+    // Strip tool blockquotes (only lines with 🛠️)
+    .replace(/^> 🛠️.*$\n?/gm, '')
+    // Strip JSON action blocks
+    .replace(/```json\n?\{[\s\S]*?"action"[\s\S]*?\}\n?```/g, '')
+    .replace(/^\{[\s\S]*?"action"\s*:[\s\S]*?\}\s*$/gm, '')
     .trim();
 }
 
@@ -260,7 +258,7 @@ export default function MessageBubble({ message, isStreaming }) {
             <ThoughtBlock content={thoughtContent} isStreaming={isStreaming && !displayContent} />
           )}
 
-          {/* Main content or shimmer */}
+          {/* Main content or loading indicator */}
           {isUser ? (
             <span style={{ whiteSpace: 'pre-wrap' }}>{displayContent}</span>
           ) : processedDisplay ? (
@@ -268,10 +266,10 @@ export default function MessageBubble({ message, isStreaming }) {
               {processedDisplay}
             </ReactMarkdown>
           ) : showThinkingSpinner ? (
-            <div className="gemini-loader">
-              <div className="gemini-line" style={{ width: '88%' }}></div>
-              <div className="gemini-line" style={{ width: '68%', animationDelay: '0.15s' }}></div>
-              <div className="gemini-line" style={{ width: '50%', animationDelay: '0.3s' }}></div>
+            <div className="typing-dots">
+              <span></span>
+              <span></span>
+              <span></span>
             </div>
           ) : null}
         </div>
