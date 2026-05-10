@@ -42,8 +42,18 @@ app.add_middleware(
 AI_MODEL = os.environ.get("AI_MODEL", "Phonsiri/Gemma-4-E4B-it-PARL")
 
 print(f"⏳ กำลังโหลดโมเดล {AI_MODEL} เข้า VRAM...")
-processor = AutoProcessor.from_pretrained(AI_MODEL)
-tokenizer = processor.tokenizer  # keep tokenizer alias for compatibility
+# Try loading multimodal processor; fall back to tokenizer-only for text-only checkpoints
+try:
+    processor = AutoProcessor.from_pretrained(AI_MODEL)
+    tokenizer = processor.tokenizer
+    HAS_VISION = True
+    print("✅ โหลด Processor (Vision+Text) สำเร็จ!")
+except Exception as _proc_err:
+    print(f"⚠️  AutoProcessor ไม่พร้อมใช้งาน ({_proc_err.__class__.__name__}), ใช้ AutoTokenizer แทน (text-only)")
+    from transformers import AutoTokenizer
+    processor = None
+    tokenizer = AutoTokenizer.from_pretrained(AI_MODEL)
+    HAS_VISION = False
 model = AutoModelForCausalLM.from_pretrained(
     AI_MODEL,
     torch_dtype=torch.bfloat16,
@@ -64,11 +74,10 @@ def model_fn(messages: List[Dict], stream_queue=None, image_b64: str = None) -> 
     try:
         device = next(model.parameters()).device
 
-        # --- Build multimodal messages if image present ---
+        # --- Build multimodal messages if image present and processor supports vision ---
         pil_image = None
-        if image_b64:
+        if image_b64 and HAS_VISION:
             try:
-                # Strip data URI prefix if present
                 b64_data = image_b64.split(',', 1)[-1]
                 pil_image = PILImage.open(BytesIO(base64.b64decode(b64_data))).convert("RGB")
             except Exception as e:
@@ -80,7 +89,6 @@ def model_fn(messages: List[Dict], stream_queue=None, image_b64: str = None) -> 
             proc_messages = []
             for i, msg in enumerate(messages):
                 if msg["role"] == "user" and i == len(messages) - 1:
-                    # Convert plain text content → multimodal list
                     proc_messages.append({
                         "role": "user",
                         "content": [
@@ -91,8 +99,9 @@ def model_fn(messages: List[Dict], stream_queue=None, image_b64: str = None) -> 
                 else:
                     proc_messages.append(msg)
 
-        # --- Tokenize via processor (handles vision tokens) ---
-        inputs = processor.apply_chat_template(
+        # --- Tokenize via processor or tokenizer ---
+        apply_fn = processor.apply_chat_template if HAS_VISION else tokenizer.apply_chat_template
+        inputs = apply_fn(
             proc_messages,
             tokenize=True,
             add_generation_prompt=True,
@@ -101,7 +110,7 @@ def model_fn(messages: List[Dict], stream_queue=None, image_b64: str = None) -> 
             enable_thinking=True,
         ).to(device)
 
-        streamer = TextIteratorStreamer(processor.tokenizer, skip_prompt=True, skip_special_tokens=False)
+        streamer = TextIteratorStreamer(tokenizer, skip_prompt=True, skip_special_tokens=False)
 
         generation_kwargs = dict(
             **inputs,
