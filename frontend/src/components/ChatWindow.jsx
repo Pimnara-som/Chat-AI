@@ -31,13 +31,14 @@ export default function ChatWindow({ messages, streamingText, isStreaming }) {
   return (
     <div className="chat-window">
       <div className="chat-inner">
-        {messages.map((msg) => (
+        {messages.map((msg, idx) => (
           <MessageBubble key={msg.id} message={msg} />
         ))}
 
         {/* Streaming message currently being typed */}
         {isStreaming && streamingText && (
           <MessageBubble
+            isLastAI={true}
             message={{ id: '__streaming__', role: 'assistant', content: streamingText }}
           />
         )}

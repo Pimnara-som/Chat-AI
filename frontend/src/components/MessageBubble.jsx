@@ -34,20 +34,24 @@ function CodeBlock({ language, value }) {
   );
 }
 
-function ThoughtBlock({ content }) {
-  const [isOpen, setIsOpen] = useState(false);
+function ThoughtBlock({ content, isStreaming }) {
+  // If streaming, keep it open. Otherwise, default to closed but allow user to toggle.
+  const [userOpened, setUserOpened] = useState(false);
+  const isOpen = isStreaming || userOpened;
 
   return (
     <div className="thought-container">
       <button 
         className={`thought-header ${isOpen ? 'active' : ''}`} 
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={() => setUserOpened(!userOpened)}
+        disabled={isStreaming} // Disable manual toggle while streaming to prevent flickering
+        type="button"
       >
         <div className="thought-title">
           <BrainCircuit size={16} className="thought-icon" />
-          <span>Thought Process (กระบวนการคิด)</span>
+          <span>{isStreaming ? 'AI กำลังวิเคราะห์... (Thinking)' : 'Thought Process (กระบวนการคิด)'}</span>
         </div>
-        {isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+        {!isStreaming && (isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />)}
       </button>
       {isOpen && (
         <div className="thought-content">
@@ -64,8 +68,9 @@ function formatTime(iso) {
   return new Date(iso).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
 }
 
-export default function MessageBubble({ message }) {
+export default function MessageBubble({ message, isLastAI }) {
   const isUser = message.role === 'user';
+  const isStreaming = isLastAI && !message.done; // We'll need to pass this from Chat component
 
   const components = {
     code({ node, inline, className, children, ...props }) {
@@ -102,7 +107,12 @@ export default function MessageBubble({ message }) {
             <img src={message.image} alt="Uploaded" className="msg-image" />
           )}
           
-          {thoughtContent && <ThoughtBlock content={thoughtContent} />}
+          {thoughtContent && (
+            <ThoughtBlock 
+              content={thoughtContent} 
+              isStreaming={isStreaming || displayContent === ''} 
+            />
+          )}
 
           {isUser ? (
             <span style={{ whiteSpace: 'pre-wrap' }}>{displayContent}</span>
