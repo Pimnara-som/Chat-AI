@@ -22,6 +22,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "agent/3_agent_loop")
 
 from agent_loop import AgentLoop
 
+import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer
+
 app = FastAPI()
 
 app.add_middleware(
@@ -32,11 +35,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-VLLM_BASE_URL = os.environ.get("VLLM_BASE_URL", "http://localhost:8000/v1")
-VLLM_API_KEY = os.environ.get("VLLM_API_KEY", "EMPTY")
 AI_MODEL = os.environ.get("AI_MODEL", "Phonsiri/Gemma-4-E4B-it-PARL")
 
-client = OpenAI(base_url=VLLM_BASE_URL, api_key=VLLM_API_KEY)
+print(f"⏳ กำลังโหลดโมเดล {AI_MODEL} เข้า VRAM...")
+tokenizer = AutoTokenizer.from_pretrained(AI_MODEL)
+model = AutoModelForCausalLM.from_pretrained(
+    AI_MODEL,
+    torch_dtype=torch.bfloat16,
+    device_map="auto"
+)
+print("✅ โหลดโมเดลสำเร็จ!")
 
 # Simple in-memory storage (matching Node.js behavior)
 conversations = {}
@@ -46,16 +54,30 @@ class ChatRequest(BaseModel):
     message: Optional[str] = None
     image: Optional[str] = None
 
-# We need to adapt model_fn to be SYNCHRONOUS for AgentLoop
+# Custom model function using local transformers
 def model_fn(messages: List[Dict]) -> str:
     try:
-        response = client.chat.completions.create(
-            model=AI_MODEL,
-            messages=messages,
-            temperature=0.7,
-            max_tokens=2048,
-        )
-        return response.choices[0].message.content
+        device = next(model.parameters()).device
+        inputs = tokenizer.apply_chat_template(
+            messages,
+            tokenize=True,
+            add_generation_prompt=True,
+            return_tensors="pt",
+            return_dict=True,
+            enable_thinking=True,
+        ).to(device)
+        
+        with torch.no_grad():
+            out = model.generate(
+                **inputs,
+                max_new_tokens=2048,
+                temperature=0.7,
+                do_sample=True,
+                top_p=0.9,
+                pad_token_id=tokenizer.eos_token_id,
+            )
+        new_tokens = out[0][inputs["input_ids"].shape[1]:]
+        return tokenizer.decode(new_tokens, skip_special_tokens=False)
     except Exception as e:
         print("Model error:", e)
         # Fallback to finish action on error
