@@ -232,17 +232,9 @@ async def chat_stream(req: Request):
     queue = asyncio.Queue()
 
     def stream_callback(tag, msg):
-        if "MODEL OUTPUT" in tag:
-            # Skip because we are streaming tokens live!
-            return
-            
-        if "ACTION" in tag or "TOOL RESULT" in tag or "WARN" in tag or "ABORT" in tag:
-            # Format nicely
-            clean_msg = str(msg).strip()
-            if len(clean_msg) > 300:
-                clean_msg = clean_msg[:300] + "... [truncated]"
-            formatted = f"\n> 🛠️ **{tag}**:\n> ```\n> {clean_msg}\n> ```\n\n"
-            queue.put_nowait({"type": "chunk", "text": formatted})
+        # Do NOT forward tool/action/warn blocks to the client.
+        # Frontend will only see live model tokens streamed via model_fn.
+        return
 
     async def generate_sse():
         # Yield init

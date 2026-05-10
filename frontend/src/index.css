@@ -518,7 +518,30 @@ body {
 .code-copy-btn.copied { color: #4ade80; }
 
 /* ─── Typing Indicator ─────────────────────────────────────────── */
-/* ─── Gemini-style Loading ──────────────────────────────────────── */
+/* ─── Smooth answer reveal ──────────────────────────────────────── */
+.msg-row.ai .msg-bubble > *:not(.thought-container) {
+  animation: answerFadeIn 0.35s ease both;
+}
+@keyframes answerFadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Blinking cursor while streaming */
+.msg-row.streaming .msg-bubble > p:last-child::after,
+.msg-row.streaming .msg-bubble > span:last-child::after {
+  content: '▋';
+  display: inline-block;
+  color: var(--accent);
+  opacity: 1;
+  animation: cursorBlink 0.9s step-start infinite;
+  font-size: 0.9em;
+  margin-left: 2px;
+}
+@keyframes cursorBlink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
+}
 .gemini-loader {
   display: flex;
   flex-direction: column;

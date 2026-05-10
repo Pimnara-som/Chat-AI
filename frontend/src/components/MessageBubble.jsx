@@ -101,80 +101,85 @@ function formatTime(iso) {
   return new Date(iso).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
 }
 
+/* ─── Strip agent noise from raw content ────────────────────────── */
+function cleanDisplay(text) {
+  if (!text) return '';
+  return text
+    // Strip tool/action/warn blockquotes streamed from backend
+    .replace(/^>\s*🛠️.*$\n?/gm, '')
+    .replace(/^>\s*```.*$\n?/gm, '')
+    .replace(/^>\s*.*$\n?/gm, '')
+    // Strip JSON action blocks (intermediate agent steps)
+    .replace(/```json[\s\S]*?```/g, '')
+    // Strip bare JSON objects that look like agent actions
+    .replace(/^\s*\{[\s\S]*?"action"\s*:[\s\S]*?\}\s*$/gm, '')
+    // Strip WARN lines
+    .replace(/^⚠️.*$\n?/gm, '')
+    // Strip leftover channel/turn tags
+    .replace(/<\|channel\|>/gi, '')
+    .replace(/<\|turn\|>/gi, '')
+    .trim();
+}
+
 /* ─── Parse agent / model output ────────────────────────────────── */
 function parseContent(raw) {
   if (!raw) return { display: '', thought: '' };
   let display = raw;
   let thought = '';
 
-  // 1. Native <think>...</think>
+  // 1. Native <think>...</think> (Gemma native thinking)
   const thinkMatch = display.match(/<think>([\s\S]*?)(?:<\/think>|$)/);
   if (thinkMatch) {
     thought = thinkMatch[1].trim();
     display = display.replace(/<think>[\s\S]*?(?:<\/think>|$)/, '').trim();
-    return { display, thought };
+    return { display: cleanDisplay(display), thought };
   }
 
-  // 2. <|channel|>thought ... (PARL model format)
-  // Use indexOf instead of lazy regex to correctly grab all thought content during streaming
-  const CHANNEL_TAG = '<|channel|>';
+  // 2. <|channel|>thought ... (PARL fine-tuned model format)
   const lowerDisplay = display.toLowerCase();
   const thoughtTagIdx = lowerDisplay.indexOf('<|channel|>thought');
   if (thoughtTagIdx !== -1) {
-    // Find end of the opening tag (everything after "<|channel|>thought")
     const afterTagStart = thoughtTagIdx + '<|channel|>thought'.length;
-    // Remove optional leading whitespace after "thought"
     let contentStart = afterTagStart;
     while (contentStart < display.length && display[contentStart] === ' ') contentStart++;
 
     const rest = display.slice(contentStart);
-    // Check if there's a closing <|channel|> tag for a non-thought channel
     const closingIdx = rest.toLowerCase().indexOf('<|channel|>');
     if (closingIdx !== -1) {
-      // Thought ends at next channel tag; display comes after
       thought = rest.slice(0, closingIdx).trim();
       const afterThought = rest.slice(closingIdx);
-      // Remove all remaining channel tags from display
       display = afterThought.replace(/<\|channel\|>[^<]*/gi, '').replace(/<\|turn\|>/gi, '').trim();
     } else {
-      // Streaming: all remaining text is the thought, display is empty
+      // Still streaming thought — display is empty until thought ends
       thought = rest.trim();
       display = '';
     }
-    // Also remove everything before the thought tag in display
-    return { display, thought };
+    return { display: cleanDisplay(display), thought };
   }
 
   // 3. Strip leftover channel tags (non-thought channels)
   if (display.includes('<|channel|>')) {
-    const lastChannelMatch = display.match(/<\|channel\|>(\w+)\s*([\s\S]*)/i);
-    if (lastChannelMatch) {
-      thought = `[${lastChannelMatch[1]}] ${lastChannelMatch[2].trim()}`;
-    }
+    const match = display.match(/<\|channel\|>(\w+)\s*([\s\S]*)/i);
+    if (match) thought = `[${match[1]}] ${match[2].trim()}`;
     display = display.replace(/<\|channel\|>[\s\S]*/gi, '').trim();
-    return { display, thought };
+    return { display: cleanDisplay(display), thought };
   }
 
-  // 4. Agent JSON format
-  const jsonMatch = display.match(/```json\n?([\s\S]*?)\n?```/) || display.match(/(\{[\s\S]*\})/);
+  // 4. Agent JSON format — extract answer from finish action
+  const jsonBlockMatch = display.match(/```json\n?([\s\S]*?)\n?```/);
+  const jsonInlineMatch = display.match(/(\{[\s\S]*\})/);
+  const jsonMatch = jsonBlockMatch || jsonInlineMatch;
   if (jsonMatch) {
     try {
       const obj = JSON.parse(jsonMatch[1].trim());
       if (obj.thought) thought = obj.thought;
-      if (obj.action === 'finish' && obj.params?.answer) display = obj.params.answer;
-      else if (obj.answer) display = obj.answer;
-      else if (obj.action) display = '';
-      return { display, thought };
+      if (obj.action === 'finish' && obj.params?.answer) return { display: cleanDisplay(obj.params.answer), thought };
+      if (obj.answer) return { display: cleanDisplay(obj.answer), thought };
+      if (obj.action && obj.action !== 'finish') return { display: '', thought: thought || JSON.stringify(obj) };
     } catch (_) {}
   }
 
-  // 5. Inline thought field
-  const thoughtMatch = display.match(/"thought"\s*:\s*"([^"]+)"/);
-  if (thoughtMatch) thought = thoughtMatch[1];
-  const answerMatch = display.match(/"answer"\s*:\s*"([\s\S]+?)"\s*\}?\s*$/);
-  if (answerMatch) display = answerMatch[1];
-
-  return { display, thought };
+  return { display: cleanDisplay(display), thought };
 }
 
 /* ─── Main Component ────────────────────────────────────────────── */
