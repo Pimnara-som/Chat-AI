@@ -118,7 +118,7 @@ def model_fn(messages: List[Dict], stream_queue=None, image_b64: str = None) -> 
             temperature=0.7,
             do_sample=True,
             top_p=0.9,
-            pad_token_id=processor.tokenizer.eos_token_id,
+            pad_token_id=tokenizer.eos_token_id,
             streamer=streamer,
         )
 
