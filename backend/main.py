@@ -24,7 +24,10 @@ from agent_loop import AgentLoop
 
 import torch
 import threading
-from transformers import AutoModelForCausalLM, AutoTokenizer, TextIteratorStreamer
+import base64
+from io import BytesIO
+from PIL import Image as PILImage
+from transformers import AutoModelForCausalLM, AutoProcessor, TextIteratorStreamer
 
 app = FastAPI()
 
@@ -39,7 +42,8 @@ app.add_middleware(
 AI_MODEL = os.environ.get("AI_MODEL", "Phonsiri/Gemma-4-E4B-it-PARL")
 
 print(f"⏳ กำลังโหลดโมเดล {AI_MODEL} เข้า VRAM...")
-tokenizer = AutoTokenizer.from_pretrained(AI_MODEL)
+processor = AutoProcessor.from_pretrained(AI_MODEL)
+tokenizer = processor.tokenizer  # keep tokenizer alias for compatibility
 model = AutoModelForCausalLM.from_pretrained(
     AI_MODEL,
     torch_dtype=torch.bfloat16,
@@ -55,51 +59,77 @@ class ChatRequest(BaseModel):
     message: Optional[str] = None
     image: Optional[str] = None
 
-# Custom model function using local transformers
-def model_fn(messages: List[Dict], stream_queue=None) -> str:
+# Custom model function using local transformers (supports vision)
+def model_fn(messages: List[Dict], stream_queue=None, image_b64: str = None) -> str:
     try:
         device = next(model.parameters()).device
-        inputs = tokenizer.apply_chat_template(
-            messages,
+
+        # --- Build multimodal messages if image present ---
+        pil_image = None
+        if image_b64:
+            try:
+                # Strip data URI prefix if present
+                b64_data = image_b64.split(',', 1)[-1]
+                pil_image = PILImage.open(BytesIO(base64.b64decode(b64_data))).convert("RGB")
+            except Exception as e:
+                print(f"⚠️ Failed to decode image: {e}")
+
+        # Inject image into last user message if we have one
+        proc_messages = messages
+        if pil_image:
+            proc_messages = []
+            for i, msg in enumerate(messages):
+                if msg["role"] == "user" and i == len(messages) - 1:
+                    # Convert plain text content → multimodal list
+                    proc_messages.append({
+                        "role": "user",
+                        "content": [
+                            {"type": "image", "image": pil_image},
+                            {"type": "text",  "text": msg.get("content", "")},
+                        ]
+                    })
+                else:
+                    proc_messages.append(msg)
+
+        # --- Tokenize via processor (handles vision tokens) ---
+        inputs = processor.apply_chat_template(
+            proc_messages,
             tokenize=True,
             add_generation_prompt=True,
             return_tensors="pt",
             return_dict=True,
             enable_thinking=True,
         ).to(device)
-        
-        streamer = TextIteratorStreamer(tokenizer, skip_prompt=True, skip_special_tokens=False)
-        
+
+        streamer = TextIteratorStreamer(processor.tokenizer, skip_prompt=True, skip_special_tokens=False)
+
         generation_kwargs = dict(
             **inputs,
             max_new_tokens=2048,
             temperature=0.7,
             do_sample=True,
             top_p=0.9,
-            pad_token_id=tokenizer.eos_token_id,
+            pad_token_id=processor.tokenizer.eos_token_id,
             streamer=streamer,
         )
-        
+
         thread = threading.Thread(target=model.generate, kwargs=generation_kwargs)
         thread.start()
-        
+
         full_text = ""
         for new_text in streamer:
             full_text += new_text
-            # Stream live token if queue is attached
             if stream_queue:
                 stream_queue.put_nowait({"type": "chunk", "text": new_text})
-                
+
         thread.join()
-        
-        # Add a newline after each hop's generation to separate from Tool Results
+
         if stream_queue:
             stream_queue.put_nowait({"type": "chunk", "text": "\n\n"})
-            
+
         return full_text
     except Exception as e:
         print("Model error:", e)
-        # Fallback to finish action on error
         return f'{{"action": "finish", "params": {{"answer": "Error calling model: {str(e)}"}} }}'
 
 @app.get("/api/health")
@@ -183,10 +213,10 @@ async def chat_stream(req: Request):
     conversations[conv_id]["messages"].append(user_msg)
     conversations[conv_id]["updatedAt"] = datetime.utcnow().isoformat() + "Z"
 
-    # Build agent query — if image included, note it
-    query = message.strip() if message else ""
-    if image:
-        query = (query + "\n\n[หมายเหตุ: ผู้ใช้ส่งรูปภาพมาด้วย แต่โมเดลนี้เป็น text-only จึงไม่สามารถวิเคราะห์รูปภาพโดยตรงได้ กรุณาแจ้งผู้ใช้ว่าขณะนี้ยังไม่รองรับการวิเคราะห์ภาพ และขอให้อธิบายเนื้อหาในรูปภาพเป็นข้อความแทน]").strip() if query else "[ผู้ใช้ส่งรูปภาพมาโดยไม่มีข้อความ กรุณาแจ้งว่าโมเดลนี้ยังไม่รองรับการวิเคราะห์ภาพ]"
+    # Build agent query
+    query = message.strip() if message else "[ผู้ใช้ส่งรูปภาพมาโดยไม่มีข้อความ กรุณาวิเคราะห์รูปภาพ]"
+    if image and not query.strip():
+        query = "กรุณาอธิบายหรือวิเคราะห์รูปภาพนี้"
 
     # Queue for streaming SSE
     queue = asyncio.Queue()
@@ -213,7 +243,7 @@ async def chat_stream(req: Request):
         
         # Initialize Agent
         def local_model_fn(messages):
-            return model_fn(messages, stream_queue=queue)
+            return model_fn(messages, stream_queue=queue, image_b64=image)
         
         # Initialize Agent
         agent = AgentLoop(
