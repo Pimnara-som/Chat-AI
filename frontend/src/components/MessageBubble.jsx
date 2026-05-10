@@ -174,12 +174,12 @@ export default function MessageBubble({ message, isStreaming }) {
   const showThinkingSpinner = isStreaming && !thoughtContent && !displayContent;
 
   return (
-    <div className={`msg-row ${isUser ? 'user' : 'ai'}`}>
-      <div className={`msg-avatar ${isUser ? 'user' : 'ai'}`}>
+    <div className={`msg-row ${isUser ? 'user' : 'ai'} ${isStreaming ? 'streaming' : ''}`}>
+      <div className={`msg-avatar ${isUser ? 'user' : 'ai'} ${isStreaming ? 'gemini-pulse' : ''}`}>
         {isUser ? <User size={16} color="var(--text-secondary)" /> : <Bot size={16} color="#fff" />}
       </div>
       <div className="msg-content">
-        <div className="msg-bubble">
+        <div className={`msg-bubble ${isStreaming ? 'gemini-streaming' : ''}`}>
           {message.image && (
             <img src={message.image} alt="Uploaded" className="msg-image" />
           )}
@@ -195,10 +195,10 @@ export default function MessageBubble({ message, isStreaming }) {
               {processedDisplay}
             </ReactMarkdown>
           ) : showThinkingSpinner ? (
-            <div className="typing-indicator">
-              <div className="typing-dot" />
-              <div className="typing-dot" />
-              <div className="typing-dot" />
+            <div className="gemini-loader">
+              <div className="gemini-line" style={{ width: '85%' }}></div>
+              <div className="gemini-line" style={{ width: '65%' }}></div>
+              <div className="gemini-line" style={{ width: '45%' }}></div>
             </div>
           ) : null}
         </div>
