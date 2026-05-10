@@ -31,19 +31,19 @@ export default function ChatWindow({ messages, streamingText, isStreaming }) {
   return (
     <div className="chat-window">
       <div className="chat-inner">
-        {messages.map((msg, idx) => (
-          <MessageBubble key={msg.id} message={msg} />
+        {messages.map((msg) => (
+          <MessageBubble key={msg.id} message={msg} isStreaming={false} />
         ))}
 
         {/* Streaming message currently being typed */}
         {isStreaming && streamingText && (
           <MessageBubble
-            isLastAI={true}
+            isStreaming={true}
             message={{ id: '__streaming__', role: 'assistant', content: streamingText }}
           />
         )}
 
-        {/* Typing indicator while waiting for first chunk */}
+        {/* Typing indicator while waiting for very first chunk */}
         {isStreaming && !streamingText && <TypingIndicator />}
 
         <div ref={bottomRef} />
@@ -51,3 +51,4 @@ export default function ChatWindow({ messages, streamingText, isStreaming }) {
     </div>
   );
 }
+

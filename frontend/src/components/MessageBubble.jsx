@@ -1,19 +1,17 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { Bot, User, Copy, Check, ChevronDown, ChevronRight, BrainCircuit } from 'lucide-react';
+import { Bot, User, Copy, Check, ChevronDown, ChevronRight, BrainCircuit, Loader2 } from 'lucide-react';
 
 function CodeBlock({ language, value }) {
   const [copied, setCopied] = useState(false);
-
   const handleCopy = () => {
     navigator.clipboard.writeText(value);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
-
   return (
     <div className="code-block-wrapper">
       <div className="code-block-header">
@@ -35,29 +33,43 @@ function CodeBlock({ language, value }) {
 }
 
 function ThoughtBlock({ content, isStreaming }) {
-  // If streaming, keep it open. Otherwise, default to closed but allow user to toggle.
   const [userOpened, setUserOpened] = useState(false);
-  const isOpen = isStreaming || userOpened;
+  // While streaming: forced open. After done: closed by default, user can toggle.
+  const isOpen = isStreaming ? true : userOpened;
+
+  // When streaming stops, auto-close
+  const prevStreaming = useRef(isStreaming);
+  useEffect(() => {
+    if (prevStreaming.current && !isStreaming) {
+      setUserOpened(false); // auto-close when done
+    }
+    prevStreaming.current = isStreaming;
+  }, [isStreaming]);
 
   return (
     <div className="thought-container">
-      <button 
-        className={`thought-header ${isOpen ? 'active' : ''}`} 
-        onClick={() => setUserOpened(!userOpened)}
-        disabled={isStreaming} // Disable manual toggle while streaming to prevent flickering
+      <button
+        className={`thought-header ${isOpen ? 'active' : ''}`}
+        onClick={() => !isStreaming && setUserOpened(v => !v)}
         type="button"
+        style={{ cursor: isStreaming ? 'default' : 'pointer' }}
       >
         <div className="thought-title">
-          <BrainCircuit size={16} className="thought-icon" />
-          <span>{isStreaming ? 'AI กำลังวิเคราะห์... (Thinking)' : 'Thought Process (กระบวนการคิด)'}</span>
+          {isStreaming
+            ? <Loader2 size={15} className="thought-icon spinning" />
+            : <BrainCircuit size={15} className="thought-icon" />
+          }
+          <span>{isStreaming ? 'กำลังวิเคราะห์...' : 'กระบวนการคิด'}</span>
         </div>
-        {!isStreaming && (isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />)}
+        {!isStreaming && (
+          <span className="thought-chevron">
+            {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          </span>
+        )}
       </button>
-      {isOpen && (
+      {isOpen && content && (
         <div className="thought-content">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>
-            {content}
-          </ReactMarkdown>
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
         </div>
       )}
     </div>
@@ -68,93 +80,96 @@ function formatTime(iso) {
   return new Date(iso).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
 }
 
-export default function MessageBubble({ message, isLastAI }) {
+/**
+ * Parse agent output:
+ *  - <think>...</think>  → thoughtContent  (native Gemma thinking)
+ *  - "thought":"..." JSON → thoughtContent  (agent ReAct step)
+ *  - "answer":"..."       → displayContent  (final answer)
+ *  - raw intermediate JSON → hide from display, show thought only
+ */
+function parseContent(raw) {
+  let display = raw || '';
+  let thought = '';
+
+  // 1. Native <think> tags
+  const thinkMatch = display.match(/<think>([\s\S]*?)(?:<\/think>|$)/);
+  if (thinkMatch) {
+    thought = thinkMatch[1].trim();
+    display = display.replace(/<think>[\s\S]*?(?:<\/think>|$)/, '').trim();
+    return { display, thought };
+  }
+
+  // 2. Agent JSON format
+  const hasJson = display.includes('"thought":') || display.includes('"action":');
+  if (!hasJson) return { display, thought };
+
+  // Extract thought field
+  const tMatch = display.match(/"thought"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+  if (tMatch) thought = tMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
+
+  // Extract answer field (finish action)
+  const aMatch = display.match(/"answer"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+  if (aMatch) {
+    display = aMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
+  } else {
+    // Intermediate step — hide raw JSON, show nothing in main bubble
+    display = '';
+  }
+
+  // Clean leftover markdown json fences or channel tags
+  display = display
+    .replace(/<\|channel\|>[\s\S]*?<\|channel\|>/g, '')
+    .replace(/```json[\s\S]*?```/g, '')
+    .trim();
+
+  return { display, thought };
+}
+
+export default function MessageBubble({ message, isStreaming }) {
   const isUser = message.role === 'user';
-  const isStreaming = isLastAI && !message.done; // We'll need to pass this from Chat component
 
   const components = {
     code({ node, inline, className, children, ...props }) {
       const match = /language-(\w+)/.exec(className || '');
       const value = String(children).replace(/\n$/, '');
-      if (!inline && match) {
-        return <CodeBlock language={match[1]} value={value} />;
-      }
+      if (!inline && match) return <CodeBlock language={match[1]} value={value} />;
       return <code className={className} {...props}>{children}</code>;
     },
   };
 
-  // Extract Thought Process and Clean Display Content
-  let displayContent = message.content || '';
-  let thoughtContent = '';
+  const { display: displayContent, thought: thoughtContent } = parseContent(message.content);
 
-  // 1. Try to find <think> tags first (Native format)
-  const thinkMatch = displayContent.match(/<think>([\s\S]*?)(?:<\/think>|$)/);
-  if (thinkMatch) {
-    thoughtContent = thinkMatch[1];
-    displayContent = displayContent.replace(/<think>[\s\S]*?(?:<\/think>|$)/, '').trim();
-  } 
-  
-  // 2. Check for Agent JSON format and internal channel tags
-  // If it's a JSON response from the agent, we want to extract the thought and maybe hide the raw JSON
-  const isAgentJson = displayContent.includes('"thought":') || displayContent.includes('"action":');
-  
-  if (isAgentJson) {
-    const jsonThoughtMatch = displayContent.match(/"thought":\s*"([^"]*)(?:"|$)/);
-    if (jsonThoughtMatch && !thoughtContent) {
-      thoughtContent = jsonThoughtMatch[1];
-    }
-    
-    // If it contains "finish" action, we want to extract the "answer" to show as primary content
-    const answerMatch = displayContent.match(/"answer":\s*"([^"]*)(?:"|$)/);
-    if (answerMatch) {
-      displayContent = answerMatch[1].replace(/\\n/g, '\n'); // Show the final answer as main text
-    } else if (!displayContent.includes('"finish"')) {
-      // If it's an intermediate step (not finish), hide the raw JSON from the main bubble
-      // but keep the thought visible in the ThoughtBlock
-      displayContent = ''; 
-    }
-  }
-
-  // 3. Clean up any leftover internal tags like <|channel|> or raw JSON markers
-  displayContent = displayContent.replace(/<\|channel\|>[\s\S]*?<\|channel\|>/g, '');
-  displayContent = displayContent.replace(/```json[\s\S]*?```/g, (match) => {
-    // If we already extracted the answer, hide the raw JSON block
-    return isAgentJson ? '' : match;
-  }).trim();
+  // isStreaming prop is passed from ChatWindow for the live streaming bubble
+  const showThinkingSpinner = isStreaming && !thoughtContent && !displayContent;
 
   return (
     <div className={`msg-row ${isUser ? 'user' : 'ai'}`}>
       <div className={`msg-avatar ${isUser ? 'user' : 'ai'}`}>
-        {isUser
-          ? <User size={16} color="var(--text-secondary)" />
-          : <Bot size={16} color="#fff" />
-        }
+        {isUser ? <User size={16} color="var(--text-secondary)" /> : <Bot size={16} color="#fff" />}
       </div>
       <div className="msg-content">
         <div className="msg-bubble">
           {message.image && (
             <img src={message.image} alt="Uploaded" className="msg-image" />
           )}
-          
+
           {thoughtContent && (
-            <ThoughtBlock 
-              content={thoughtContent} 
-              isStreaming={isStreaming || (displayContent === '' && !message.done)} 
-            />
+            <ThoughtBlock content={thoughtContent} isStreaming={isStreaming && !displayContent} />
           )}
 
           {isUser ? (
             <span style={{ whiteSpace: 'pre-wrap' }}>{displayContent}</span>
-          ) : (
-            displayContent ? (
-              <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
-                {displayContent}
-              </ReactMarkdown>
-            ) : (
-              // Show typing dots ONLY if we don't even have a thought yet
-              !thoughtContent && <span className="typing-dots">...</span>
-            )
-          )}
+          ) : displayContent ? (
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+              {displayContent}
+            </ReactMarkdown>
+          ) : showThinkingSpinner ? (
+            <div className="typing-indicator">
+              <div className="typing-dot" />
+              <div className="typing-dot" />
+              <div className="typing-dot" />
+            </div>
+          ) : null}
         </div>
         {message.timestamp && (
           <div className="msg-time">{formatTime(message.timestamp)}</div>

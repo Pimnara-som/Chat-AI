@@ -612,8 +612,8 @@ body {
   margin-bottom: 12px;
   border-radius: var(--radius-sm);
   overflow: hidden;
-  border: 1px solid var(--glass-border);
-  background: var(--bg-base);
+  border: 1px solid rgba(124,92,252,0.2);
+  background: rgba(124,92,252,0.04);
 }
 
 .thought-header {
@@ -625,41 +625,60 @@ body {
   background: none;
   border: none;
   cursor: pointer;
-  transition: var(--trans);
+  transition: background 0.15s;
   color: var(--text-secondary);
+  font-family: var(--font-sans);
 }
 
 .thought-header:hover {
-  background: var(--bg-hover);
+  background: rgba(124,92,252,0.08);
 }
 
 .thought-header.active {
-  border-bottom: 1px solid var(--glass-border);
+  border-bottom: 1px solid rgba(124,92,252,0.15);
 }
 
 .thought-title {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 13px;
+  gap: 7px;
+  font-size: 12.5px;
   font-weight: 500;
+  color: #a78bfa;
 }
 
 .thought-icon {
-  color: var(--accent);
+  color: #a78bfa;
+  flex-shrink: 0;
+}
+
+.thought-icon.spinning {
+  animation: spin 1.2s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+.thought-chevron {
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
 }
 
 .thought-content {
-  padding: 12px;
-  font-size: 13.5px;
-  line-height: 1.6;
+  padding: 12px 14px;
+  font-size: 13px;
+  line-height: 1.65;
   color: var(--text-secondary);
-  background: var(--bg-surface);
+  background: transparent;
+  max-height: 300px;
+  overflow-y: auto;
 }
 
-.thought-content p {
-  margin-bottom: 8px;
-}
+.thought-content p { margin-bottom: 6px; }
+.thought-content p:last-child { margin-bottom: 0; }
 
 .typing-dots {
   color: var(--text-muted);
@@ -669,7 +688,7 @@ body {
 }
 
 @keyframes pulse {
-  0% { opacity: 0.3; }
-  50% { opacity: 1; }
+  0%   { opacity: 0.3; }
+  50%  { opacity: 1; }
   100% { opacity: 0.3; }
 }
