@@ -68,7 +68,7 @@ def model_fn(messages: List[Dict], stream_queue=None) -> str:
             enable_thinking=True,
         ).to(device)
         
-        streamer = TextIteratorStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
+        streamer = TextIteratorStreamer(tokenizer, skip_prompt=True, skip_special_tokens=False)
         
         generation_kwargs = dict(
             **inputs,

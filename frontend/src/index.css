@@ -606,3 +606,70 @@ body {
   margin-bottom: 8px;
   border: 1px solid var(--glass-border);
 }
+
+/* ─── Thought Process Block ───────────────────────────────────── */
+.thought-container {
+  margin-bottom: 12px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  border: 1px solid var(--glass-border);
+  background: var(--bg-base);
+}
+
+.thought-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: var(--trans);
+  color: var(--text-secondary);
+}
+
+.thought-header:hover {
+  background: var(--bg-hover);
+}
+
+.thought-header.active {
+  border-bottom: 1px solid var(--glass-border);
+}
+
+.thought-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.thought-icon {
+  color: var(--accent);
+}
+
+.thought-content {
+  padding: 12px;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  background: var(--bg-surface);
+}
+
+.thought-content p {
+  margin-bottom: 8px;
+}
+
+.typing-dots {
+  color: var(--text-muted);
+  font-size: 20px;
+  font-weight: bold;
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0% { opacity: 0.3; }
+  50% { opacity: 1; }
+  100% { opacity: 0.3; }
+}

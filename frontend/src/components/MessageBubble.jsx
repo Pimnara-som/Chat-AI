@@ -3,7 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { Bot, User, Copy, Check } from 'lucide-react';
+import { Bot, User, Copy, Check, ChevronDown, ChevronRight, BrainCircuit } from 'lucide-react';
 
 function CodeBlock({ language, value }) {
   const [copied, setCopied] = useState(false);
@@ -34,6 +34,32 @@ function CodeBlock({ language, value }) {
   );
 }
 
+function ThoughtBlock({ content }) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <div className="thought-container">
+      <button 
+        className={`thought-header ${isOpen ? 'active' : ''}`} 
+        onClick={() => setIsOpen(!isOpen)}
+      >
+        <div className="thought-title">
+          <BrainCircuit size={16} className="thought-icon" />
+          <span>Thought Process (กระบวนการคิด)</span>
+        </div>
+        {isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+      </button>
+      {isOpen && (
+        <div className="thought-content">
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+            {content}
+          </ReactMarkdown>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function formatTime(iso) {
   return new Date(iso).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
 }
@@ -52,6 +78,16 @@ export default function MessageBubble({ message }) {
     },
   };
 
+  // Extract <think>...</think> content
+  let displayContent = message.content || '';
+  let thoughtContent = '';
+
+  const thinkMatch = displayContent.match(/<think>([\s\S]*?)(?:<\/think>|$)/);
+  if (thinkMatch) {
+    thoughtContent = thinkMatch[1];
+    displayContent = displayContent.replace(/<think>[\s\S]*?(?:<\/think>|$)/, '').trim();
+  }
+
   return (
     <div className={`msg-row ${isUser ? 'user' : 'ai'}`}>
       <div className={`msg-avatar ${isUser ? 'user' : 'ai'}`}>
@@ -65,12 +101,19 @@ export default function MessageBubble({ message }) {
           {message.image && (
             <img src={message.image} alt="Uploaded" className="msg-image" />
           )}
+          
+          {thoughtContent && <ThoughtBlock content={thoughtContent} />}
+
           {isUser ? (
-            <span style={{ whiteSpace: 'pre-wrap' }}>{message.content}</span>
+            <span style={{ whiteSpace: 'pre-wrap' }}>{displayContent}</span>
           ) : (
-            <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
-              {message.content}
-            </ReactMarkdown>
+            displayContent ? (
+              <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+                {displayContent}
+              </ReactMarkdown>
+            ) : (
+              !thoughtContent && <span className="typing-dots">...</span>
+            )
           )}
         </div>
         {message.timestamp && (
