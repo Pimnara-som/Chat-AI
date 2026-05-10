@@ -173,12 +173,22 @@ function parseContent(raw) {
   const jsonMatch = raw.match(/```json\n?([\s\S]*?)\n?```/) || raw.match(/(\{[\s\S]*\})/);
   if (jsonMatch) {
     try {
-      const obj = JSON.parse(jsonMatch[1].trim());
+      const contentStr = jsonMatch[1].trim();
+      const obj = JSON.parse(contentStr);
       const thought = obj.thought || '';
       if (obj.action === 'finish' && obj.params?.answer) return { display: obj.params.answer.trim(), thought };
       if (obj.answer) return { display: obj.answer.trim(), thought };
       if (obj.action && obj.action !== 'finish') return { display: '', thought };
-    } catch (_) {}
+    } catch (_) {
+      // Incomplete JSON (streaming): manually extract "thought" field if possible
+      const contentStr = jsonMatch[1].trim();
+      const partialThought = contentStr.match(/"thought"\s*:\s*"([\s\S]*?)(?:"|$)/);
+      if (partialThought) {
+        return { thought: partialThought[1], display: '' };
+      }
+      // If we see any JSON structure but no thought yet, treat it as thought phase
+      return { thought: '', display: '' };
+    }
   }
 
   // ── Path 6: Plain text, just clean up tags
@@ -229,11 +239,17 @@ export default function MessageBubble({ message, isStreaming }) {
     processedDisplay = processedDisplay.replace(/<\|channel\|>/g, '').replace(/<\|turn\|>/g, '').trim();
   }
 
-  // Clean up Thought content (hide JSON tool calls)
+  // Clean up Thought content (hide JSON tool calls and internal "backend" stuff)
   let processedThought = thoughtContent;
   if (processedThought) {
-    // Strip full or partial ```json ... ``` blocks
-    processedThought = processedThought.replace(/```json[\s\S]*?(```|$)/gi, '').trim();
+    processedThought = processedThought
+      // 1. Strip all markdown code blocks entirely (including partial ones)
+      .replace(/```[\s\S]*?(```|$)/gi, '')
+      // 2. Strip raw JSON-like structures that look like tool calls (e.g. { "action": ... })
+      .replace(/\{[\s\S]*?("action"|"thought"|"params")[\s\S]*?(\}|$)/gi, '')
+      // 3. Strip any residual "json" text labels that might be left by typos
+      .replace(/^\s*json\s*$/gim, '')
+      .trim();
   }
 
   // Shimmer: only show when truly nothing yet (no thought, no answer)
