@@ -83,7 +83,7 @@ export default function MessageBubble({ message, isLastAI }) {
     },
   };
 
-  // Extract Thought Process: Look for <think> tags OR "thought": "..." within JSON
+  // Extract Thought Process and Clean Display Content
   let displayContent = message.content || '';
   let thoughtContent = '';
 
@@ -93,18 +93,34 @@ export default function MessageBubble({ message, isLastAI }) {
     thoughtContent = thinkMatch[1];
     displayContent = displayContent.replace(/<think>[\s\S]*?(?:<\/think>|$)/, '').trim();
   } 
-  // 2. If no <think> tags, look for "thought": "..." in JSON (Agent format)
-  else {
-    // This regex looks for the content of the "thought" key in a JSON-like string
-    // It handles the streaming case where the ending quote might not be there yet
+  
+  // 2. Check for Agent JSON format and internal channel tags
+  // If it's a JSON response from the agent, we want to extract the thought and maybe hide the raw JSON
+  const isAgentJson = displayContent.includes('"thought":') || displayContent.includes('"action":');
+  
+  if (isAgentJson) {
     const jsonThoughtMatch = displayContent.match(/"thought":\s*"([^"]*)(?:"|$)/);
-    if (jsonThoughtMatch) {
+    if (jsonThoughtMatch && !thoughtContent) {
       thoughtContent = jsonThoughtMatch[1];
-      // We don't remove it from displayContent because we want to keep the JSON block intact 
-      // if it contains other fields like "action", but we might want to hide the raw JSON 
-      // if it's purely internal. However, for now, let's just show the thought block.
+    }
+    
+    // If it contains "finish" action, we want to extract the "answer" to show as primary content
+    const answerMatch = displayContent.match(/"answer":\s*"([^"]*)(?:"|$)/);
+    if (answerMatch) {
+      displayContent = answerMatch[1].replace(/\\n/g, '\n'); // Show the final answer as main text
+    } else if (!displayContent.includes('"finish"')) {
+      // If it's an intermediate step (not finish), hide the raw JSON from the main bubble
+      // but keep the thought visible in the ThoughtBlock
+      displayContent = ''; 
     }
   }
+
+  // 3. Clean up any leftover internal tags like <|channel|> or raw JSON markers
+  displayContent = displayContent.replace(/<\|channel\|>[\s\S]*?<\|channel\|>/g, '');
+  displayContent = displayContent.replace(/```json[\s\S]*?```/g, (match) => {
+    // If we already extracted the answer, hide the raw JSON block
+    return isAgentJson ? '' : match;
+  }).trim();
 
   return (
     <div className={`msg-row ${isUser ? 'user' : 'ai'}`}>
@@ -135,6 +151,7 @@ export default function MessageBubble({ message, isLastAI }) {
                 {displayContent}
               </ReactMarkdown>
             ) : (
+              // Show typing dots ONLY if we don't even have a thought yet
               !thoughtContent && <span className="typing-dots">...</span>
             )
           )}
