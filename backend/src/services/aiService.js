@@ -1,24 +1,29 @@
-import { HfInference } from '@huggingface/inference';
+import OpenAI from 'openai';
 import dotenv from 'dotenv';
 dotenv.config();
 
-const hf = new HfInference(process.env.HF_API_KEY);
+// vLLM exposes an OpenAI-compatible REST API
+const client = new OpenAI({
+  baseURL: process.env.VLLM_BASE_URL || 'http://localhost:8000/v1',
+  apiKey:  process.env.VLLM_API_KEY  || 'EMPTY', // vLLM doesn't require auth by default
+});
+
 const MODEL = process.env.AI_MODEL || 'Phonsiri/Gemma-4-E4B-it-PARL';
 const MAX_TOKENS = parseInt(process.env.MAX_TOKENS) || 2048;
 
 const SYSTEM_PROMPT =
   process.env.SYSTEM_PROMPT ||
-  `You are a helpful AI assistant. You can speak both Thai and English fluently. 
-Be friendly, helpful, and concise in your responses. 
+  `You are a helpful AI assistant. You can speak both Thai and English fluently.
+Be friendly, helpful, and concise in your responses.
 Format your responses using markdown when appropriate (code blocks, lists, bold text, tables, etc.).
 When writing code, always specify the language for syntax highlighting.`;
 
 /**
- * Stream a response from HuggingFace Inference API.
+ * Stream a response from vLLM using the OpenAI-compatible chat completions API.
  * @param {Array<{role:string, content:string}>} messages
- * @param {Function} onChunk  - called with each text delta
- * @param {Function} onDone   - called with full accumulated text
- * @param {Function} onError  - called on error
+ * @param {Function} onChunk  - called with each text delta string
+ * @param {Function} onDone   - called with the full accumulated response text
+ * @param {Function} onError  - called with an Error on failure
  */
 export async function generateStreamingResponse(messages, onChunk, onDone, onError) {
   try {
@@ -27,17 +32,18 @@ export async function generateStreamingResponse(messages, onChunk, onDone, onErr
       ...messages.map((m) => ({ role: m.role, content: m.content })),
     ];
 
-    let fullText = '';
-
-    const stream = hf.chatCompletionStream({
+    const stream = await client.chat.completions.create({
       model: MODEL,
       messages: formattedMessages,
       max_tokens: MAX_TOKENS,
       temperature: 0.7,
+      stream: true,
     });
 
+    let fullText = '';
+
     for await (const chunk of stream) {
-      const delta = chunk.choices?.[0]?.delta?.content || '';
+      const delta = chunk.choices?.[0]?.delta?.content ?? '';
       if (delta) {
         fullText += delta;
         onChunk(delta);
@@ -46,7 +52,8 @@ export async function generateStreamingResponse(messages, onChunk, onDone, onErr
 
     onDone(fullText);
   } catch (error) {
-    console.error('HuggingFace AI Error:', error);
+    console.error('vLLM AI Error:', error?.message || error);
     onError(error);
   }
 }
+
