@@ -1,5 +1,15 @@
 const API_BASE = '/api';
 
+// Get or create userId
+function getUserId() {
+  let userId = localStorage.getItem('chat_user_id');
+  if (!userId) {
+    userId = 'user_' + Math.random().toString(36).substring(2, 15);
+    localStorage.setItem('chat_user_id', userId);
+  }
+  return userId;
+}
+
 /** Safely parse JSON from a Response — avoids crash on empty / HTML bodies */
 async function safeJson(res) {
   const text = await res.text();
@@ -13,7 +23,9 @@ async function safeJson(res) {
 
 export async function fetchConversations() {
   try {
-    const res = await fetch(`${API_BASE}/conversations`);
+    const res = await fetch(`${API_BASE}/conversations`, {
+      headers: { 'X-User-Id': getUserId() }
+    });
     if (!res.ok) throw new Error(`Server error ${res.status}`);
     const data = await safeJson(res);
     return Array.isArray(data) ? data : [];
@@ -24,7 +36,9 @@ export async function fetchConversations() {
 }
 
 export async function fetchConversation(id) {
-  const res = await fetch(`${API_BASE}/conversations/${id}`);
+  const res = await fetch(`${API_BASE}/conversations/${id}`, {
+    headers: { 'X-User-Id': getUserId() }
+  });
   if (!res.ok) throw new Error(`Server error ${res.status}`);
   const data = await safeJson(res);
   if (!data) throw new Error('Empty response from server');
@@ -34,7 +48,10 @@ export async function fetchConversation(id) {
 export async function createConversation() {
   const res = await fetch(`${API_BASE}/conversations`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 
+      'Content-Type': 'application/json',
+      'X-User-Id': getUserId()
+    },
     body: JSON.stringify({}),
   });
   if (!res.ok) throw new Error(`Server error ${res.status}`);
@@ -42,7 +59,10 @@ export async function createConversation() {
 }
 
 export async function deleteConversation(id) {
-  const res = await fetch(`${API_BASE}/conversations/${id}`, { method: 'DELETE' });
+  const res = await fetch(`${API_BASE}/conversations/${id}`, { 
+    method: 'DELETE',
+    headers: { 'X-User-Id': getUserId() }
+  });
   if (!res.ok) throw new Error(`Server error ${res.status}`);
   return safeJson(res);
 }
@@ -61,7 +81,10 @@ export async function sendMessageStream(conversationId, message, image, onInit, 
   try {
     const res = await fetch(`${API_BASE}/chat/stream`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'X-User-Id': getUserId()
+      },
       body: JSON.stringify({ conversationId, message, image }),
     });
 
