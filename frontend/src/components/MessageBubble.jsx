@@ -104,12 +104,12 @@ function formatTime(iso) {
 /* ─── Strip ALL model channel formatting from a string ──────────── */
 function stripChannelTags(text) {
   if (!text) return '';
-  // Remove ALL <|channel|>xxx tags and content up to the next tag
-  // e.g. "<|channel|>thought hello <|channel|>assistant bye" → " bye"
-  // We keep only content after the LAST non-thought channel tag
   return text
-    .replace(/<\|turn\|>/gi, '')
-    .replace(/<\|channel\|>\w*/gi, '')
+    // Strip <|turn|> and variations
+    .replace(/<\|?turn\|?>/gi, '')
+    // Strip <|channel|> and all its broken variations (e.g. <channel|>, <|channel, &lt;|channel|&gt;) + the following word
+    .replace(/(&lt;|<)\|?channel\|?(&gt;|>)\s*\w*/gi, '')
+    .replace(/<channel\|>\s*\w*/gi, '')
     .trim();
 }
 
@@ -138,20 +138,17 @@ function parseContent(raw) {
   }
 
   // ── Path 3: PARL <|channel|>thought format (old backend streaming directly)
-  const thoughtMatch = raw.match(/<\|channel\|>\s*thought/i);
+  const thoughtMatch = raw.match(/(&lt;|<)\|?channel\|?(&gt;|>)\s*thought/i) || raw.match(/<channel\|>\s*thought/i);
   if (thoughtMatch) {
     const thoughtStart = thoughtMatch.index;
     let afterTag = thoughtStart + thoughtMatch[0].length;
     while (afterTag < raw.length && raw[afterTag] === ' ') afterTag++;
     const rest = raw.slice(afterTag);
-    const nextTagMatch = rest.match(/<\|channel\|>/i);
+    const nextTagMatch = rest.match(/(&lt;|<)\|?channel\|?(&gt;|>)/i) || rest.match(/<channel\|>/i);
     if (nextTagMatch) {
       const thought = rest.slice(0, nextTagMatch.index).trim();
       const afterAnswer = rest.slice(nextTagMatch.index);
-      const display = afterAnswer
-        .replace(/<\|channel\|>\w*/gi, '')
-        .replace(/<\|turn\|>/gi, '')
-        .trim();
+      const display = stripChannelTags(afterAnswer);
       return { thought, display };
     }
     return { thought: rest.trim(), display: '' };
