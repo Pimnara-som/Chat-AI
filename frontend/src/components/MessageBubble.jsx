@@ -130,13 +130,33 @@ function parseContent(raw) {
   // ── Path 1: new App.jsx structured format (__THOUGHT__ / __ANSWER__)
   if (raw.startsWith('__THOUGHT__')) {
     const answerIdx = raw.indexOf('__ANSWER__');
+    let thought = '';
+    let display = '';
+    
     if (answerIdx !== -1) {
-      return {
-        thought: raw.slice('__THOUGHT__'.length, answerIdx).trim(),
-        display: raw.slice(answerIdx + '__ANSWER__'.length).trim(),
-      };
+      thought = raw.slice('__THOUGHT__'.length, answerIdx).trim();
+      display = raw.slice(answerIdx + '__ANSWER__'.length).trim();
+    } else {
+      thought = raw.slice('__THOUGHT__'.length).trim();
     }
-    return { thought: raw.slice('__THOUGHT__'.length).trim(), display: '' };
+
+    // New: If thought itself contains a JSON block, try to extract just the human text
+    const innerJson = thought.match(/```json\n?([\s\S]*?)\n?```/) || thought.match(/(\{[\s\S]*\})/);
+    if (innerJson) {
+      try {
+        const obj = JSON.parse(innerJson[1].trim());
+        if (obj.thought) thought = obj.thought;
+        // If we found an answer inside this JSON and display is empty, use it
+        if (!display && obj.params?.answer) display = obj.params.answer;
+        if (!display && obj.answer) display = obj.answer;
+      } catch (_) {
+        // Fallback: manually extract "thought" field if JSON is partial
+        const partial = innerJson[1].match(/"thought"\s*:\s*"([\s\S]*?)(?:"|$)/);
+        if (partial) thought = partial[1];
+      }
+    }
+    
+    return { thought, display };
   }
 
   // ── Path 2: Native <think>...</think>
@@ -245,8 +265,8 @@ export default function MessageBubble({ message, isStreaming }) {
     processedThought = processedThought
       // 1. Strip all markdown code blocks entirely (including partial ones)
       .replace(/```[\s\S]*?(```|$)/gi, '')
-      // 2. Strip raw JSON-like structures that look like tool calls (e.g. { "action": ... })
-      .replace(/\{[\s\S]*?("action"|"thought"|"params")[\s\S]*?(\}|$)/gi, '')
+      // 2. Strip raw JSON-like structures (any object containing typical agent keys)
+      .replace(/\{[\s\S]*?("action"|"thought"|"params"|"answer")[\s\S]*?(\}|$)/gi, '')
       // 3. Strip any residual "json" text labels that might be left by typos
       .replace(/^\s*json\s*$/gim, '')
       .trim();
