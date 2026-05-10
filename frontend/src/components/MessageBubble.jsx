@@ -48,28 +48,38 @@ function ThoughtBlock({ content, isStreaming }) {
     if (!isStreaming) setIsOpen(false);
   }, [isStreaming]);
 
+  const hasContent = Boolean(content);
+  
+  let title = 'กระบวนการคิด';
+  if (isStreaming) {
+    title = hasContent ? 'กำลังวิเคราะห์...' : 'กำลังประมวลผลข้อมูล...';
+  }
+
   return (
     <div className="thought-container">
       <button
-        className={`thought-header ${isOpen ? 'active' : ''}`}
-        onClick={() => setIsOpen(v => !v)}
+        className={`thought-header ${isOpen ? 'active' : ''} ${!hasContent ? 'pulsing' : ''}`}
+        onClick={() => hasContent && setIsOpen(v => !v)}
         type="button"
+        style={{ cursor: hasContent ? 'pointer' : 'default' }}
       >
         <div className="thought-title">
           {isStreaming
             ? <Loader2 size={14} className="thought-icon spinning" />
             : <BrainCircuit size={14} className="thought-icon" />
           }
-          <span>{isStreaming ? 'กำลังวิเคราะห์...' : 'กระบวนการคิด'}</span>
-          {!isStreaming && content && (
+          <span>{title}</span>
+          {!isStreaming && hasContent && (
             <span className="thought-word-count">{content.split(' ').length} words</span>
           )}
         </div>
-        <span className="thought-chevron">
-          {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-        </span>
+        {hasContent && (
+          <span className="thought-chevron">
+            {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          </span>
+        )}
       </button>
-      {isOpen && content && (
+      {isOpen && hasContent && (
         <div className="thought-content">
           <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
         </div>
@@ -236,23 +246,17 @@ export default function MessageBubble({ message, isStreaming }) {
           )}
 
           {/* Thought block */}
-          {thoughtContent && (
+          {(thoughtContent || showThinkingSpinner) && (
             <ThoughtBlock content={thoughtContent} isStreaming={isStreaming && !displayContent} />
           )}
 
-          {/* Main content or loading indicator */}
+          {/* Main content */}
           {isUser ? (
             <span style={{ whiteSpace: 'pre-wrap' }}>{displayContent}</span>
           ) : processedDisplay ? (
             <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
               {processedDisplay}
             </ReactMarkdown>
-          ) : showThinkingSpinner ? (
-            <div className="typing-dots">
-              <span></span>
-              <span></span>
-              <span></span>
-            </div>
           ) : null}
         </div>
 
