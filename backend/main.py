@@ -183,6 +183,11 @@ async def chat_stream(req: Request):
     conversations[conv_id]["messages"].append(user_msg)
     conversations[conv_id]["updatedAt"] = datetime.utcnow().isoformat() + "Z"
 
+    # Build agent query — if image included, note it
+    query = message.strip() if message else ""
+    if image:
+        query = (query + "\n\n[หมายเหตุ: ผู้ใช้ส่งรูปภาพมาด้วย แต่โมเดลนี้เป็น text-only จึงไม่สามารถวิเคราะห์รูปภาพโดยตรงได้ กรุณาแจ้งผู้ใช้ว่าขณะนี้ยังไม่รองรับการวิเคราะห์ภาพ และขอให้อธิบายเนื้อหาในรูปภาพเป็นข้อความแทน]").strip() if query else "[ผู้ใช้ส่งรูปภาพมาโดยไม่มีข้อความ กรุณาแจ้งว่าโมเดลนี้ยังไม่รองรับการวิเคราะห์ภาพ]"
+
     # Queue for streaming SSE
     queue = asyncio.Queue()
 
@@ -219,7 +224,7 @@ async def chat_stream(req: Request):
         )
         
         # We need to pass the query.
-        query = message or "[User sent an image]"
+        # (query is built above, outside generate_sse)
 
         # Start the blocking agent run in a thread
         task = loop.run_in_executor(None, agent.run, query)
