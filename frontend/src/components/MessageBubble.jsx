@@ -1,10 +1,15 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { Bot, User, Copy, Check, ChevronDown, ChevronRight, BrainCircuit, Loader2 } from 'lucide-react';
+import {
+  Copy, Check, ChevronDown, ChevronRight,
+  BrainCircuit, Loader2, Sparkles, ThumbsUp,
+  ThumbsDown, RotateCcw, Volume2, Terminal,
+} from 'lucide-react';
 
+/* ─── Code Block ────────────────────────────────────────────────── */
 function CodeBlock({ language, value }) {
   const [copied, setCopied] = useState(false);
   const handleCopy = () => {
@@ -15,15 +20,18 @@ function CodeBlock({ language, value }) {
   return (
     <div className="code-block-wrapper">
       <div className="code-block-header">
-        <span>{language || 'code'}</span>
+        <div className="code-block-lang">
+          <Terminal size={12} />
+          <span>{language || 'code'}</span>
+        </div>
         <button className={`code-copy-btn${copied ? ' copied' : ''}`} onClick={handleCopy}>
-          {copied ? <><Check size={12} /> Copied</> : <><Copy size={12} /> Copy</>}
+          {copied ? <><Check size={12} /> Copied!</> : <><Copy size={12} /> Copy</>}
         </button>
       </div>
       <SyntaxHighlighter
         language={language || 'text'}
         style={oneDark}
-        customStyle={{ margin: 0, borderRadius: 0, fontSize: 13, background: '#0d0d14' }}
+        customStyle={{ margin: 0, borderRadius: 0, fontSize: 13, background: '#0d0d14', lineHeight: 1.7 }}
         showLineNumbers={value.split('\n').length > 5}
       >
         {value}
@@ -32,10 +40,10 @@ function CodeBlock({ language, value }) {
   );
 }
 
+/* ─── Thought Block ─────────────────────────────────────────────── */
 function ThoughtBlock({ content, isStreaming }) {
-  const [isOpen, setIsOpen] = useState(isStreaming); // open while streaming, closed after
+  const [isOpen, setIsOpen] = useState(isStreaming);
 
-  // When streaming ends, auto-close
   useEffect(() => {
     if (!isStreaming) setIsOpen(false);
   }, [isStreaming]);
@@ -49,10 +57,13 @@ function ThoughtBlock({ content, isStreaming }) {
       >
         <div className="thought-title">
           {isStreaming
-            ? <Loader2 size={15} className="thought-icon spinning" />
-            : <BrainCircuit size={15} className="thought-icon" />
+            ? <Loader2 size={14} className="thought-icon spinning" />
+            : <BrainCircuit size={14} className="thought-icon" />
           }
           <span>{isStreaming ? 'กำลังวิเคราะห์...' : 'กระบวนการคิด'}</span>
+          {!isStreaming && content && (
+            <span className="thought-word-count">{content.split(' ').length} words</span>
+          )}
         </div>
         <span className="thought-chevron">
           {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
@@ -67,22 +78,36 @@ function ThoughtBlock({ content, isStreaming }) {
   );
 }
 
+/* ─── AI Avatar with animated gradient ─────────────────────────── */
+function AIAvatar({ isStreaming }) {
+  return (
+    <div className={`msg-avatar ai ${isStreaming ? 'gemini-pulse' : ''}`}>
+      <Sparkles size={15} color="#fff" />
+    </div>
+  );
+}
+
+/* ─── User Avatar ───────────────────────────────────────────────── */
+function UserAvatar() {
+  return (
+    <div className="msg-avatar user">
+      <span className="user-avatar-letter">U</span>
+    </div>
+  );
+}
+
+/* ─── Time Formatter ────────────────────────────────────────────── */
 function formatTime(iso) {
   return new Date(iso).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
 }
 
-/**
- * Parse agent output:
- *  - <think>...</think>  → thoughtContent  (native Gemma thinking)
- *  - "thought":"..." JSON → thoughtContent  (agent ReAct step)
- *  - "answer":"..."       → displayContent  (final answer)
- *  - raw intermediate JSON → hide from display, show thought only
- */
+/* ─── Parse agent / model output ────────────────────────────────── */
 function parseContent(raw) {
-  let display = raw || '';
+  if (!raw) return { display: '', thought: '' };
+  let display = raw;
   let thought = '';
 
-  // 1. Native <think>...</think> tags (Gemma native thinking)
+  // 1. Native <think>...</think>
   const thinkMatch = display.match(/<think>([\s\S]*?)(?:<\/think>|$)/);
   if (thinkMatch) {
     thought = thinkMatch[1].trim();
@@ -90,21 +115,17 @@ function parseContent(raw) {
     return { display, thought };
   }
 
-  // 2. <|channel|>thought ... (model internal channel format)
-  // More robust regex: allow optional space after <|channel|> and handle multiple thought patterns
+  // 2. <|channel|>thought ... (PARL model format)
   const channelThoughtMatch = display.match(/<\|channel\|>\s*thought\s*([\s\S]*?)(?:<\|channel\|>|$)/i);
   if (channelThoughtMatch) {
     thought = channelThoughtMatch[1].trim();
-    // Remove the thought block from display
     display = display.replace(/<\|channel\|>\s*thought[\s\S]*?(?:<\|channel\|>|$)/i, '').trim();
-    // Also strip any remaining <|channel|> tags or <|turn|> tags
     display = display.replace(/<\|channel\|>[^<]*/g, '').replace(/<\|turn\|>/g, '').trim();
     return { display, thought };
   }
 
-  // 3. Strip any leftover <|channel|> prefixes from display
+  // 3. Strip leftover channel tags
   if (display.includes('<|channel|>')) {
-    // Extract text after the last channel tag as thought
     const lastChannelMatch = display.match(/<\|channel\|>(\w+)\s*([\s\S]*)/);
     if (lastChannelMatch) {
       thought = `[${lastChannelMatch[1]}] ${lastChannelMatch[2].trim()}`;
@@ -113,28 +134,38 @@ function parseContent(raw) {
     return { display, thought };
   }
 
-  // 4. Agent JSON format ("thought" / "action" / "answer" fields)
-  const hasJson = display.includes('"thought":') || display.includes('"action":');
-  if (!hasJson) return { display, thought };
-
-  // Extract thought field
-  const tMatch = display.match(/"thought"\s*:\s*"((?:[^"\\]|\\.)*)"/);
-  if (tMatch) thought = tMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
-
-  // Extract answer field (finish action)
-  const aMatch = display.match(/"answer"\s*:\s*"((?:[^"\\]|\\.)*)"/);
-  if (aMatch) {
-    display = aMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
-  } else {
-    // Intermediate step — hide raw JSON, show nothing in main bubble
-    display = '';
+  // 4. Agent JSON format
+  const jsonMatch = display.match(/```json\n?([\s\S]*?)\n?```/) || display.match(/(\{[\s\S]*\})/);
+  if (jsonMatch) {
+    try {
+      const obj = JSON.parse(jsonMatch[1].trim());
+      if (obj.thought) thought = obj.thought;
+      if (obj.action === 'finish' && obj.params?.answer) display = obj.params.answer;
+      else if (obj.answer) display = obj.answer;
+      else if (obj.action) display = '';
+      return { display, thought };
+    } catch (_) {}
   }
+
+  // 5. Inline thought field
+  const thoughtMatch = display.match(/"thought"\s*:\s*"([^"]+)"/);
+  if (thoughtMatch) thought = thoughtMatch[1];
+  const answerMatch = display.match(/"answer"\s*:\s*"([\s\S]+?)"\s*\}?\s*$/);
+  if (answerMatch) display = answerMatch[1];
 
   return { display, thought };
 }
 
+/* ─── Main Component ────────────────────────────────────────────── */
 export default function MessageBubble({ message, isStreaming }) {
   const isUser = message.role === 'user';
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(displayContent);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   const components = {
     code({ node, inline, className, children, ...props }) {
@@ -146,7 +177,7 @@ export default function MessageBubble({ message, isStreaming }) {
     a: ({ node, href, children, ...props }) => {
       if (href && href.startsWith('citation:')) {
         return (
-          <a href={href} className="citation-link" title={`View Reference`} {...props}>
+          <a href={href} className="citation-link" title="View Reference" {...props}>
             {children}
           </a>
         );
@@ -157,7 +188,7 @@ export default function MessageBubble({ message, isStreaming }) {
 
   const { display: displayContent, thought: thoughtContent } = parseContent(message.content);
 
-  // Preprocess displayContent to convert [1], [1, 5] into markdown links
+  // Process citations [1] → clickable links
   let processedDisplay = displayContent;
   if (processedDisplay) {
     processedDisplay = processedDisplay.replace(/\[([\d,\s]+)\]/g, (match, nums) => {
@@ -166,28 +197,30 @@ export default function MessageBubble({ message, isStreaming }) {
       }
       return match;
     });
-    // Final cleanup of any lingering model tags
     processedDisplay = processedDisplay.replace(/<\|channel\|>/g, '').replace(/<\|turn\|>/g, '').trim();
   }
 
-  // isStreaming prop is passed from ChatWindow for the live streaming bubble
   const showThinkingSpinner = isStreaming && !thoughtContent && !displayContent;
 
   return (
-    <div className={`msg-row ${isUser ? 'user' : 'ai'} ${isStreaming ? 'streaming' : ''}`}>
-      <div className={`msg-avatar ${isUser ? 'user' : 'ai'} ${isStreaming ? 'gemini-pulse' : ''}`}>
-        {isUser ? <User size={16} color="var(--text-secondary)" /> : <Bot size={16} color="#fff" />}
-      </div>
+    <div className={`msg-row ${isUser ? 'user' : 'ai'}${isStreaming ? ' streaming' : ''}`}>
+      {/* Avatar */}
+      {isUser ? <UserAvatar /> : <AIAvatar isStreaming={isStreaming} />}
+
       <div className="msg-content">
-        <div className={`msg-bubble ${isStreaming ? 'gemini-streaming' : ''}`}>
+        {/* Bubble */}
+        <div className={`msg-bubble${isStreaming ? ' gemini-streaming' : ''}`}>
+          {/* Attached image */}
           {message.image && (
             <img src={message.image} alt="Uploaded" className="msg-image" />
           )}
 
+          {/* Thought block */}
           {thoughtContent && (
             <ThoughtBlock content={thoughtContent} isStreaming={isStreaming && !displayContent} />
           )}
 
+          {/* Main content */}
           {isUser ? (
             <span style={{ whiteSpace: 'pre-wrap' }}>{displayContent}</span>
           ) : processedDisplay ? (
@@ -196,26 +229,35 @@ export default function MessageBubble({ message, isStreaming }) {
             </ReactMarkdown>
           ) : showThinkingSpinner ? (
             <div className="gemini-loader">
-              <div className="gemini-line" style={{ width: '85%' }}></div>
-              <div className="gemini-line" style={{ width: '65%' }}></div>
-              <div className="gemini-line" style={{ width: '45%' }}></div>
+              <div className="gemini-line" style={{ width: '88%' }}></div>
+              <div className="gemini-line" style={{ width: '68%', animationDelay: '0.15s' }}></div>
+              <div className="gemini-line" style={{ width: '50%', animationDelay: '0.3s' }}></div>
             </div>
           ) : null}
         </div>
-        {message.timestamp && (
-          <div className="msg-footer">
-            <div className="msg-time">{formatTime(message.timestamp)}</div>
-            {!isUser && displayContent && (
-              <button 
-                className="msg-action-btn" 
-                onClick={() => navigator.clipboard.writeText(displayContent)}
-                title="Copy response"
-              >
-                <Copy size={12} />
+
+        {/* Footer: time + actions */}
+        <div className={`msg-footer ${isUser ? 'user' : 'ai'}`}>
+          {message.timestamp && (
+            <span className="msg-time">{formatTime(message.timestamp)}</span>
+          )}
+          {!isUser && displayContent && !isStreaming && (
+            <div className="msg-actions">
+              <button className="msg-action-btn" onClick={handleCopy} title="คัดลอก">
+                {copied ? <Check size={13} /> : <Copy size={13} />}
               </button>
-            )}
-          </div>
-        )}
+              <button className="msg-action-btn" title="ฟัง">
+                <Volume2 size={13} />
+              </button>
+              <button className="msg-action-btn" title="ถูกใจ">
+                <ThumbsUp size={13} />
+              </button>
+              <button className="msg-action-btn" title="ไม่ถูกใจ">
+                <ThumbsDown size={13} />
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

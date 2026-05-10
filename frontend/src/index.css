@@ -344,79 +344,91 @@ body {
 .msg-row.user { flex-direction: row-reverse; }
 
 .msg-avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  margin-top: 2px;
+  margin-top: 4px;
 }
 .msg-avatar.ai {
   background: var(--gradient);
-  box-shadow: 0 0 12px rgba(124,92,252,0.4);
+  box-shadow: 0 0 16px rgba(124,92,252,0.35);
 }
 .msg-avatar.user {
-  background: var(--bg-elevated);
-  border: 1px solid var(--glass-border);
-  box-shadow: var(--shadow-sm);
+  background: linear-gradient(135deg, #e0e7ff, #c7d2fe);
+  border: 1px solid rgba(124, 92, 252, 0.2);
+}
+.user-avatar-letter {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent);
 }
 
 .msg-content {
-  max-width: 72%;
+  max-width: 74%;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
 }
 .msg-bubble {
   padding: 12px 16px;
-  border-radius: var(--radius);
-  line-height: 1.65;
+  border-radius: 18px;
+  line-height: 1.7;
   font-size: 14.5px;
   position: relative;
+  transition: var(--trans);
 }
 .msg-row.user .msg-bubble {
   background: var(--user-bubble);
   color: #fff;
-  border-bottom-right-radius: 4px;
-  box-shadow: 0 4px 12px rgba(124, 92, 252, 0.2);
+  border-bottom-right-radius: 5px;
+  box-shadow: 0 4px 16px rgba(124, 92, 252, 0.25);
 }
 .msg-row.ai .msg-bubble {
-  background: var(--ai-bubble);
-  border: 1px solid var(--glass-border);
+  background: #ffffff;
+  border: 1px solid rgba(0,0,0,0.07);
   color: var(--text-primary);
-  border-bottom-left-radius: 4px;
-  box-shadow: var(--shadow-sm);
-  backdrop-filter: var(--glass-blur);
+  border-bottom-left-radius: 5px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.06);
 }
 .msg-time {
   font-size: 11px;
   color: var(--text-muted);
+  white-space: nowrap;
 }
 .msg-footer {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
+  gap: 6px;
   padding: 2px 4px;
+  min-height: 24px;
 }
-.msg-row.ai .msg-footer { justify-content: flex-start; flex-direction: row-reverse; }
+.msg-footer.user { justify-content: flex-end; }
+.msg-footer.ai { justify-content: flex-start; }
 
+.msg-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.msg-row:hover .msg-actions { opacity: 1; }
 .msg-action-btn {
   background: none;
   border: none;
   cursor: pointer;
   color: var(--text-muted);
-  padding: 4px;
-  border-radius: 4px;
+  padding: 5px;
+  border-radius: 6px;
   display: flex;
   align-items: center;
   transition: var(--trans);
-  opacity: 0;
 }
-.msg-row:hover .msg-action-btn { opacity: 1; }
-.msg-action-btn:hover { color: var(--accent); background: var(--bg-hover); }
+.msg-action-btn:hover { color: var(--accent); background: rgba(124,92,252,0.08); }
 
 /* ─── Markdown inside AI bubbles ──────────────────────────────── */
 .msg-bubble p { margin: 0 0 10px; }
@@ -465,21 +477,28 @@ body {
 /* ─── Code Block ───────────────────────────────────────────────── */
 .code-block-wrapper {
   position: relative;
-  margin: 10px 0;
+  margin: 12px 0;
   border-radius: var(--radius-sm);
   overflow: hidden;
-  border: 1px solid var(--glass-border);
+  border: 1px solid rgba(0,0,0,0.12);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.1);
 }
 .code-block-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 8px 14px;
-  background: rgba(0,0,0,0.04);
-  border-bottom: 1px solid var(--glass-border);
+  background: #161622;
+  border-bottom: 1px solid rgba(255,255,255,0.07);
   font-size: 12px;
-  color: var(--text-muted);
+  color: #8b8bb8;
   font-family: var(--font-mono);
+}
+.code-block-lang {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #8b8bb8;
 }
 .code-copy-btn {
   background: none;
@@ -725,6 +744,14 @@ body {
   font-size: 12.5px;
   font-weight: 500;
   color: #a78bfa;
+}
+.thought-word-count {
+  font-size: 10.5px;
+  color: var(--text-muted);
+  background: rgba(124,92,252,0.1);
+  padding: 1px 6px;
+  border-radius: 99px;
+  font-weight: 400;
 }
 
 .thought-icon {
