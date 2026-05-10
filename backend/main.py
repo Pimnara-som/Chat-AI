@@ -201,7 +201,7 @@ async def chat_stream(req: Request):
 
     async def generate_sse():
         # Yield init
-        yield f'data: {json.dumps({"type": "init", "conversationId": conv_id})}\\n\\n'
+        yield f'data: {json.dumps({"type": "init", "conversationId": conv_id})}\n\n'
         
         # Run agent in background thread
         loop = asyncio.get_event_loop()
@@ -228,14 +228,14 @@ async def chat_stream(req: Request):
         while not task.done():
             try:
                 chunk = await asyncio.wait_for(queue.get(), timeout=0.1)
-                yield f'data: {json.dumps(chunk)}\\n\\n'
+                yield f'data: {json.dumps(chunk)}\n\n'
             except asyncio.TimeoutError:
                 continue
                 
         # Flush remaining queue
         while not queue.empty():
             chunk = queue.get_nowait()
-            yield f'data: {json.dumps(chunk)}\\n\\n'
+            yield f'data: {json.dumps(chunk)}\n\n'
             
         # Get final result
         result = task.result()
@@ -252,7 +252,7 @@ async def chat_stream(req: Request):
         conversations[conv_id]["updatedAt"] = datetime.utcnow().isoformat() + "Z"
         
         # Done
-        yield f'data: {json.dumps({"type": "done"})}\\n\\n'
+        yield f'data: {json.dumps({"type": "done"})}\n\n'
 
     return StreamingResponse(generate_sse(), media_type="text/event-stream")
 
