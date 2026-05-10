@@ -106,6 +106,28 @@ function UserAvatar() {
   );
 }
 
+/* ─── HTML Report View ─────────────────────────────────────────── */
+function ReportView({ html }) {
+  const iframeRef = useRef(null);
+
+  return (
+    <div className="report-wrapper">
+      <div className="report-header">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <FileText size={16} className="report-icon" />
+          <span style={{ fontWeight: 600, fontSize: 13 }}>Research Report</span>
+        </div>
+      </div>
+      <iframe
+        srcDoc={html}
+        title="AI Report"
+        className="report-iframe"
+        sandbox="allow-popups allow-scripts"
+      />
+    </div>
+  );
+}
+
 /* ─── Time Formatter ────────────────────────────────────────────── */
 function formatTime(iso) {
   return new Date(iso).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
@@ -143,14 +165,15 @@ function parseContent(raw) {
     // New: If thought itself contains a JSON block, try to extract just the human text
     const innerJson = thought.match(/```json\n?([\s\S]*?)\n?```/) || thought.match(/(\{[\s\S]*\})/);
     if (innerJson) {
+      const jsonStart = thought.indexOf(innerJson[0]);
+      const afterJson = thought.slice(jsonStart + innerJson[0].length).trim();
       try {
         const obj = JSON.parse(innerJson[1].trim());
         if (obj.thought) thought = obj.thought;
-        // If we found an answer inside this JSON and display is empty, use it
-        if (!display && obj.params?.answer) display = obj.params.answer;
-        if (!display && obj.answer) display = obj.answer;
+        // If we found an answer inside this JSON or AFTER it, use it
+        const finalDisplay = (obj.params?.answer || obj.answer || afterJson).trim();
+        if (!display && finalDisplay) display = finalDisplay;
       } catch (_) {
-        // Fallback: manually extract "thought" field if JSON is partial
         const partial = innerJson[1].match(/"thought"\s*:\s*"([\s\S]*?)(?:"|$)/);
         if (partial) thought = partial[1];
       }
@@ -192,13 +215,15 @@ function parseContent(raw) {
   // ── Path 5: Agent JSON format
   const jsonMatch = raw.match(/```json\n?([\s\S]*?)\n?```/) || raw.match(/(\{[\s\S]*\})/);
   if (jsonMatch) {
+    const jsonStart = raw.indexOf(jsonMatch[0]);
+    const afterJson = raw.slice(jsonStart + jsonMatch[0].length).trim();
     try {
       const contentStr = jsonMatch[1].trim();
       const obj = JSON.parse(contentStr);
       const thought = obj.thought || '';
-      if (obj.action === 'finish' && obj.params?.answer) return { display: obj.params.answer.trim(), thought };
-      if (obj.answer) return { display: obj.answer.trim(), thought };
-      if (obj.action && obj.action !== 'finish') return { display: '', thought };
+      // Support HTML report generated OUTSIDE the JSON block as per instructions
+      const display = (obj.params?.answer || obj.answer || afterJson).trim();
+      return { display, thought };
     } catch (_) {
       // Incomplete JSON (streaming): manually extract "thought" field if possible
       const contentStr = jsonMatch[1].trim();
@@ -206,7 +231,6 @@ function parseContent(raw) {
       if (partialThought) {
         return { thought: partialThought[1], display: '' };
       }
-      // If we see any JSON structure but no thought yet, treat it as thought phase
       return { thought: '', display: '' };
     }
   }
@@ -296,6 +320,8 @@ export default function MessageBubble({ message, isStreaming }) {
           {/* Main content */}
           {isUser ? (
             <span style={{ whiteSpace: 'pre-wrap' }}>{displayContent}</span>
+          ) : !isUser && processedDisplay && (processedDisplay.includes('<html>') || processedDisplay.includes('<!DOCTYPE html>')) ? (
+            <ReportView html={processedDisplay} />
           ) : processedDisplay ? (
             <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
               {processedDisplay}
